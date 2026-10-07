@@ -84,6 +84,8 @@ void Config::Load() {
     longLandscape = ReadInt(path, L"window", L"landscape", 0);
     welcomed = ReadInt(path, L"app", L"welcomed", 0) != 0;
     debugLog = ReadInt(path, L"app", L"debuglog", 0) != 0;
+    licenseKey = WideToUtf8(Read(path, L"license", L"key"));
+    licenseInstance = WideToUtf8(Read(path, L"license", L"instance"));
     if (dirty) Save();
 }
 
@@ -103,4 +105,6 @@ void Config::Save() const {
     Write(path, L"window", L"landscape", std::to_wstring(longLandscape));
     Write(path, L"app", L"welcomed", welcomed ? L"1" : L"0");
     Write(path, L"app", L"debuglog", debugLog ? L"1" : L"0");
+    Write(path, L"license", L"key", Utf8ToWide(licenseKey));
+    Write(path, L"license", L"instance", Utf8ToWide(licenseInstance));
 }

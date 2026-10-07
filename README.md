@@ -12,6 +12,18 @@ springs in with the stream, and it melts away when mirroring stops.
   video is hardware decoded.
 * **Small and native:** a single C++ app with no Bonjour install, no .NET and no bundled extras.
 
+## Free and Pro
+
+| | Free | Pro ($2.99, one-time) |
+|---|---|---|
+| Screen Mirroring | ✅ full screen | ✅ full screen **or** a floating glass window |
+| Lossless AirPlay music | ✅ | ✅ |
+| Move, resize, zoom, keep on top, corner float | | ✅ |
+
+Try it free to check it works with your devices. To unlock Pro, right-click the tray icon →
+*Unlock windowed mode*, buy, and paste the license key from your receipt email. The key is
+checked once online; after that Pro also works offline.
+
 ## Use it
 
 * **Screen Mirroring (iPhone / iPad / Mac):** Control Center → Screen Mirroring (two overlapping
@@ -80,7 +92,7 @@ Needs Python 3, the Windows 10/11 SDK (for `fxc`), llvm-mingw unpacked to
 `third_party\ffmpeg-*` ([BtbN builds](https://github.com/BtbN/FFmpeg-Builds/releases)).
 
 ```
-python build.py                                           # output in build\
+python build.py                                           # output in build\ (--pro: Pro always unlocked)
 powershell -ExecutionPolicy Bypass -File deploy.ps1       # install for this user
 powershell -ExecutionPolicy Bypass -File package.ps1      # installer + source zip in dist\
 ```

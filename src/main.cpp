@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "control_pipe.h"
+#include "license.h"
 #include "crypto/crypto.h"
 #include "media/audio_output.h"
 #include "net/airplay_server.h"
@@ -28,10 +29,12 @@ constexpr UINT kMsgPipeLine = WM_APP + 6;     // lParam: std::string* (one JSON 
 constexpr UINT kMsgPipeClients = WM_APP + 7;  // wParam: connected client count
 constexpr UINT kMsgNowPlaying = WM_APP + 8;
 constexpr UINT kMsgMediaDone = WM_APP + 9;    // lParam: MediaResult*
+constexpr UINT kMsgUpgrade = WM_APP + 10;     // free edition: the user tried to leave full screen
+constexpr UINT kMsgLicenseRevoked = WM_APP + 11;
 constexpr UINT_PTR kTimerNowPlaying = 1;
 constexpr UINT_PTR kTimerTvGrace = 2;
 constexpr UINT_PTR kTimerNpDebounce = 3;
-constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104;
+constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 struct StartEvent {
@@ -146,6 +149,9 @@ private:
     void EmitLayout(bool byUser);
     void EmitNowPlaying();
     void MediaLoop();
+    // AirGlass Pro (UI thread).
+    void ShowUpgrade(const std::wstring& reason);
+    void CheckLicenseInBackground();
 
     HINSTANCE inst_ = nullptr;
     HWND msgWnd_ = nullptr;
@@ -158,6 +164,7 @@ private:
     MdnsResponder mdns_;
     ControlPipe pipe_;
     std::string name_;
+    bool loopback_ = false, upgradeOpen_ = false;
 
     // Mirroring session as reported to TV Mode.
     uint64_t curSid_ = 0;
@@ -247,6 +254,8 @@ void App::ShowTrayMenu() {
     if (pipeClients_ > 0) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Connected to TV Mode");
     if (glass_.Visible()) AppendMenuW(m, MF_STRING, kMenuShow, L"Show mirroring window");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    if (glass_.Pro()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"AirGlass Pro — thank you!");
+    else AppendMenuW(m, MF_STRING, kMenuPro, (std::wstring(L"Unlock windowed mode (Pro, ") + license::kPrice + L")…").c_str());
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), kMenuAutostart, L"Start with Windows");
     AppendMenuW(m, MF_STRING, kMenuLogs, L"Open log folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -260,6 +269,7 @@ void App::ShowTrayMenu() {
     case kMenuAutostart: SetAutostart(!AutostartEnabled()); break;
     case kMenuLogs: ShellExecuteW(nullptr, L"open", AppDataDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case kMenuShow: glass_.BringToFront(); break;
+    case kMenuPro: ShowUpgrade(L"The free edition mirrors full screen. Pro adds the floating glass window."); break;
     case kMenuQuit: PostQuitMessage(0); break;
     default: break;
     }
@@ -364,6 +374,18 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             KillTimer(msgWnd_, kTimerTvGrace);
             if (pipeClients_ == 0) glass_.SetTvControlled(false);
         }
+        return 0;
+    case kMsgUpgrade:
+        ShowUpgrade(L"Windowed mode is part of AirGlass Pro. The free edition mirrors full screen.");
+        return 0;
+    case kMsgLicenseRevoked:
+        LOGW("license: no longer valid; back to the free edition");
+        cfg_.licenseKey.clear();
+        cfg_.licenseInstance.clear();
+        cfg_.Save();
+        glass_.SetPro(false);
+        Balloon(L"AirGlass Pro is no longer active",
+                L"The license key was refunded or disabled. AirGlass keeps working in full-screen mode.");
         return 0;
     case kMsgShowExisting:
         if (glass_.Visible()) glass_.BringToFront();
@@ -486,6 +508,36 @@ void App::OnPipeCommand(const std::string& line) {
     }
 }
 
+void App::ShowUpgrade(const std::wstring& reason) {
+    if (glass_.Pro() || upgradeOpen_) return;
+    if (loopback_) {  // automated tests: never pop a dialog
+        LOGI("license: upgrade dialog suppressed in loopback mode");
+        return;
+    }
+    upgradeOpen_ = true;
+    std::string key, instance;
+    HWND owner = glass_.Visible() ? glass_.Hwnd() : msgWnd_;
+    if (license::ShowUpgradeDialog(owner, reason, &key, &instance)) {
+        cfg_.licenseKey = key;
+        cfg_.licenseInstance = instance;
+        cfg_.Save();
+        glass_.SetPro(true);
+        LOGI("license: AirGlass Pro unlocked");
+    }
+    upgradeOpen_ = false;
+}
+
+// Re-checks a stored key once per start. Only a definite "invalid" answer (refund, disabled key)
+// locks Pro again; being offline keeps it.
+void App::CheckLicenseInBackground() {
+    if (cfg_.licenseKey.empty() || cfg_.licenseInstance.empty()) return;
+    std::thread([key = cfg_.licenseKey, instance = cfg_.licenseInstance, target = msgWnd_] {
+        Sleep(15000);  // let start-up (and the network) settle first
+        license::Result r = license::Validate(key, instance);
+        if (r.ok && !r.valid) PostMessageW(target, kMsgLicenseRevoked, 0, 0);
+    }).detach();
+}
+
 void App::MediaLoop() {
     for (;;) {
         MediaJob job;
@@ -542,6 +594,20 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
         }
     };
     glass_.onTvLayoutChanged = [this](bool byUser) { EmitLayout(byUser); };
+    // Posted, so the dialog never opens inside the glass window's own input handling.
+    glass_.onUpgradeRequested = [this] { PostMessageW(msgWnd_, kMsgUpgrade, 0, 0); };
+
+    loopback_ = loopback;
+#ifdef AIRGLASS_ALWAYS_PRO
+    bool pro = true;  // personal build (python build.py --pro)
+#else
+    bool pro = !cfg_.licenseKey.empty() && !cfg_.licenseInstance.empty();
+    // Loopback tests exercise the windowed UI unless AIRGLASS_DEBUG_FREE asks for the free edition.
+    if (loopback) pro = !GetEnvironmentVariableW(L"AIRGLASS_DEBUG_FREE", nullptr, 0);
+    else CheckLicenseInBackground();
+#endif
+    glass_.SetPro(pro);
+    LOGI("edition: %s", pro ? "Pro" : "free (full screen only)");
     glass_.onOptionsChanged = [this] {
         auto o = glass_.CurrentOptions();
         cfg_.pinned = o.pinned;

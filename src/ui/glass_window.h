@@ -45,6 +45,12 @@ public:
     void BringToFront();
     Options CurrentOptions() const { return opt_; }
 
+    // Free edition: every session opens full screen, and leaving it (Esc, F, double-click, the
+    // capsule, TV float) calls onUpgradeRequested instead. Pro unlocks the window.
+    void SetPro(bool pro) { pro_ = pro; }
+    bool Pro() const { return pro_; }
+    HWND Hwnd() const { return hwnd_; }
+
     // TV Mode control (UI thread). While TV-controlled the window floats topmost at a corner,
     // never takes focus, and its capsule offers full screen / move corner / size / stop.
     void SetTvControlled(bool on);
@@ -61,6 +67,7 @@ public:
     std::function<void()> onUserClose;
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
+    std::function<void()> onUpgradeRequested;
 
     // FrameSink (decoder threads)
     ID3D11Device* GpuDevice() override { return dev_.Get(); }
@@ -208,6 +215,7 @@ private:
     POINT dragStart_{};
     bool inSizeMove_ = false, sizing_ = false, movedInLoop_ = false;
     Options opt_;
+    bool pro_ = true;
     // TV Mode
     bool tv_ = false, sessionLive_ = false, tvHidden_ = false, tvHiding_ = false, tvFree_ = false;
     TvLayout tvDefaults_, tvLayout_;

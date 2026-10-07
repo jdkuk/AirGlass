@@ -14,6 +14,7 @@
 
 #include "crypto/crypto.h"
 #include "crypto/fairplay.h"
+#include "license.h"
 #include "media/resampler.h"
 #include "net/bplist.h"
 #include "net/mdns.h"
@@ -1127,6 +1128,14 @@ static int CmdResolve(std::string instance, const std::string& type) {
     return ok ? 0 : 1;
 }
 
+// Lemon Squeezy license round trip (the same calls the Pro dialog and start-up check make).
+static int CmdLicense(const std::string& action, const std::string& key, const std::string& arg) {
+    license::Result r = action == "validate" ? license::Validate(key, arg) : license::Activate(key, arg);
+    printf("%s: reached=%d valid=%d instance=%s error=%s\n", action.c_str(), r.ok, r.valid, r.instanceId.c_str(),
+           r.error.c_str());
+    return r.ok ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     net::Startup();
@@ -1142,5 +1151,6 @@ int main(int argc, char** argv) {
     if (cmd == "music") return CmdMusic(argc, argv);
     if (cmd == "resampler") return CmdResampler();
     if (cmd == "resolve" && argc >= 4) return CmdResolve(argv[2], argv[3]);
+    if (cmd == "license" && argc >= 5) return CmdLicense(argv[2], argv[3], argv[4]);  // activate|validate KEY NAME|ID
     return Fail("unknown command");
 }

@@ -1,6 +1,9 @@
 """AirGlass build: shaders (fxc) + C/C++ (llvm-mingw clang), parallel and incremental.
 
-usage: python build.py [--clean] [--debug]
+usage: python build.py [--clean] [--debug] [--pro]
+
+--pro builds a personal copy with AirGlass Pro always unlocked (no license key needed).
+Releases are built without it.
 """
 import concurrent.futures as cf
 import glob
@@ -14,9 +17,10 @@ TC = glob.glob(os.path.join(ROOT, ".toolchain", "llvm-mingw-*", "bin"))[0]
 FFMPEG = glob.glob(os.path.join(ROOT, "third_party", "ffmpeg-*"))[0]
 FXC = os.path.join(os.environ["ProgramFiles(x86)"], r"Windows Kits\10\bin\10.0.22621.0\x64\fxc.exe")
 OUT = os.path.join(ROOT, "build")
-OBJ = os.path.join(OUT, "obj")
-SHADERS = os.path.join(OUT, "shaders")
 DEBUG = "--debug" in sys.argv
+PRO = "--pro" in sys.argv
+OBJ = os.path.join(OUT, "obj-pro" if PRO else "obj")
+SHADERS = os.path.join(OUT, "shaders")
 
 CXXFLAGS = [
     "-std=c++20", "-O0" if DEBUG else "-O2", "-g" if DEBUG else "-g0",
@@ -28,7 +32,7 @@ CXXFLAGS = [
     "-I" + os.path.join(ROOT, "third_party", "playfair"),
     "-I" + os.path.join(FFMPEG, "include"),
     "-I" + SHADERS,
-]
+] + (["-DAIRGLASS_ALWAYS_PRO"] if PRO else [])
 CFLAGS = ["-std=gnu11", "-O2", "-w"]
 
 LIBS = [
@@ -36,7 +40,7 @@ LIBS = [
     os.path.join(FFMPEG, "lib", "libavutil.dll.a"),
     "-ld3d11", "-ldxgi", "-ldcomp", "-ld2d1", "-ldwrite", "-ldwmapi", "-lshcore",
     "-lws2_32", "-lmswsock", "-liphlpapi", "-lbcrypt", "-ladvapi32", "-lole32", "-loleaut32",
-    "-luuid", "-lshell32", "-luser32", "-lgdi32", "-lavrt", "-lwinmm",
+    "-luuid", "-lshell32", "-luser32", "-lgdi32", "-lavrt", "-lwinmm", "-lwinhttp",
 ]
 
 SHADER_JOBS = [
@@ -161,7 +165,7 @@ def main():
     if rc != 0:
         print("LINK FAILED (AirGlass.exe)")
         return 1
-    print("  linked build/AirGlass.exe")
+    print("  linked build/AirGlass.exe" + (" (Pro always unlocked)" if PRO else ""))
 
     if os.path.exists(TEST_CPP[0]):
         test_objs = common_objs + [obj_path(s) for s in SHARED_FOR_TEST] + [obj_path(TEST_CPP[0])]

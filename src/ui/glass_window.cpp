@@ -972,6 +972,11 @@ void GlassWindow::EnterFullscreen(HMONITOR mon) {
 
 void GlassWindow::ExitFullscreen() {
     if (!fullscreen_) return;
+    if (!pro_ && sessionLive_ && !dismissing_) {
+        LOGI("ui: windowed mode needs AirGlass Pro");
+        if (onUpgradeRequested) onUpgradeRequested();
+        return;
+    }
     fullscreen_ = false;
     RectF target = restoreSlab_;
     if (tv_ && !tvFree_) target = TvFloatSlab(tvLayout_, aspect_);
@@ -1114,7 +1119,7 @@ void GlassWindow::ShowWindowForSession() {
     }
     if (debugFsIn_ > 0) SetTimer(hwnd_, kTimerDebugFsIn, UINT(debugFsIn_ * 1000), nullptr);
     if (debugFsOut_ > 0) SetTimer(hwnd_, kTimerDebugFsOut, UINT(debugFsOut_ * 1000), nullptr);
-    if (tv_ && tvLayout_.mode == TvLayout::Full) EnterFullscreen(mon);
+    if ((tv_ && tvLayout_.mode == TvLayout::Full) || !pro_) EnterFullscreen(mon);
     if (tvHighlight_ >= 0) {
         std::lock_guard<std::mutex> lk(stateMu_);
         shared_.hoverBtn = tvHighlight_;

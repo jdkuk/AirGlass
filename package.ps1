@@ -5,6 +5,9 @@ param([string]$Version = '1.0.0', [switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
+if (Select-String -Path src\license.h -Pattern 'kStoreId = 0;' -Quiet) {
+    throw 'Set license::kStoreId / kProductId / kBuyUrl in src\license.h to the Lemon Squeezy product first.'
+}
 if (-not $SkipBuild) {
     python build.py
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }

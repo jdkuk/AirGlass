@@ -15,6 +15,7 @@ struct Config {
     int longPortrait = 0, longLandscape = 0;
     bool welcomed = false;
     bool debugLog = false;
+    std::string licenseKey, licenseInstance;  // AirGlass Pro (Lemon Squeezy key + activation id)
 
     void Load();   // creates identity on first run
     void Save() const;
