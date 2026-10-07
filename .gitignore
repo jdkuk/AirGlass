@@ -1,0 +1,8 @@
+/build/
+/dist/
+/.toolchain/
+/third_party/dl/
+/third_party/ref/
+/third_party/ffmpeg-*/
+__pycache__/
+*.log
