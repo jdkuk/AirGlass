@@ -8,13 +8,14 @@ $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$en
 $images = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'docs\images'
 $profileDir = Join-Path $env:TEMP 'airglass-brand-edge'
 $jobs = @(
-    @{ Page = 'hero.html'; Out = 'hero.png'; Size = '1600,900' },
-    @{ Page = 'banner.html'; Out = 'banner.png'; Size = '1280,640' }
+    @{ Page = 'hero.html'; Out = 'hero.png'; Size = '1600,900'; Scale = 2 },
+    @{ Page = 'banner.html'; Out = 'banner.png'; Size = '1280,640'; Scale = 1 }  # social preview must stay under 1 MB
 )
 foreach ($j in $jobs) {
     $url = 'file:///' + (Join-Path $PSScriptRoot $j.Page).Replace('\', '/')
     $out = Join-Path $images $j.Out
-    Start-Process -Wait -FilePath $edge -ArgumentList '--headless=new', '--disable-gpu', '--hide-scrollbars',
+    # hero.png renders at 2x (3200x1800) so it stays crisp on high-DPI screens.
+    Start-Process -Wait -FilePath $edge -ArgumentList '--headless=new', '--disable-gpu', '--hide-scrollbars', "--force-device-scale-factor=$($j.Scale)",
         "--user-data-dir=`"$profileDir`"", "--window-size=$($j.Size)", '--virtual-time-budget=3000',
         "--screenshot=`"$out`"", $url
     Write-Host "rendered $($j.Out)"

@@ -15,7 +15,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap">
 <style>
 /* ===== Tokens ===================================================================== */
 :root {
@@ -97,6 +97,16 @@ nav.top .wrap { display: flex; align-items: center; justify-content: space-betwe
 @keyframes ring { 0% { transform: scale(1); opacity: .9; } 22% { transform: scale(1.18, 1.45); opacity: 0; } 100% { opacity: 0; } }
 
 /* ===== Hero ========================================================================= */
+.serif { font-family: "Instrument Serif", Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -.01em; }
+h1 .serif { font-size: 1.12em; line-height: .9; background: linear-gradient(100deg, #ffd9b0, #f6b6d6 40%, #c9b8ff 75%, #9fd6ff);
+  -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: .06em; }
+h2 .serif { font-size: 1.1em; color: #e6dcff; }
+.hero-art { position: absolute; left: 0; right: 0; top: 0; height: 980px; z-index: -1; pointer-events: none; overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,.85) 45%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,.85) 45%, transparent 100%); }
+.hero-art::before { content: ""; position: absolute; inset: -40px; background: url(media/monet.jpg) center 30% / cover; opacity: .34; filter: saturate(1.15) blur(1px);
+  animation: kenburns 40s ease-in-out infinite alternate; }
+.hero-art::after { content: ""; position: absolute; inset: 0; background: radial-gradient(70% 60% at 50% 30%, transparent, rgba(6,7,12,.75)), linear-gradient(180deg, rgba(6,7,12,.35), rgba(6,7,12,.1) 40%, var(--bg)); }
+@keyframes kenburns { to { transform: scale(1.08) translate(-1.5%, 1%); } }
 header.hero { text-align: center; padding: 64px 0 28px; }
 .pill {
   position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 999px;
@@ -125,13 +135,8 @@ h1 .grad { background: linear-gradient(115deg, #fff 15%, #c2c9ff 45%, #e2b6ff 75
 .stand { position: absolute; left: calc(15% + 42.5% - 6%); width: 12%; top: 87%; height: 9%;
   background: linear-gradient(180deg, #191b22, #2a2d36); clip-path: polygon(22% 0, 78% 0, 88% 100%, 12% 100%); }
 .stand::after { content: ""; position: absolute; left: -45%; right: -45%; bottom: -1.2cqw; height: 1.4cqw; border-radius: 1cqw; background: linear-gradient(180deg, #2b2e37, #15171d); box-shadow: 0 1cqw 2cqw -0.5cqw rgba(0,0,0,.8); }
-.screen { position: relative; width: 100%; height: 100%; border-radius: .9cqw; overflow: hidden;
-  background:
-    radial-gradient(48% 62% at 16% 20%, #3a49e0 0%, transparent 70%),
-    radial-gradient(44% 58% at 90% 28%, #8b36e8 0%, transparent 70%),
-    radial-gradient(52% 50% at 58% 108%, #0f8fb0 0%, transparent 70%),
-    linear-gradient(160deg, #161a38, #090b14); }
-.screen::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.4)); }
+.screen { position: relative; width: 100%; height: 100%; border-radius: .9cqw; overflow: hidden; background: #2a2440 url(media/monet.jpg) center / cover; }
+.screen::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent 50%, rgba(0,0,0,.35)), rgba(10,8,30,.12); }
 .screen::after { /* glass reflection on the panel */
   content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 30;
   background: linear-gradient(115deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,0) 30%, rgba(255,255,255,0) 70%, rgba(255,255,255,.03)); }
@@ -307,6 +312,61 @@ h2 { font-size: clamp(30px, 4.6vw, 52px); letter-spacing: -.035em; margin: 0 0 1
 .stats span { color: var(--muted); font-size: 14px; }
 @media (max-width: 760px) { .stats { grid-template-columns: 1fr 1fr; } }
 
+/* ===== Playground: a real, grabbable AirGlass Pro window ============================ */
+.desk { position: relative; margin: 0 auto; max-width: 1128px; aspect-ratio: 16 / 9; border-radius: 22px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+  background: #2a2440 url(media/monet.jpg) center / cover; border: 1px solid var(--rim); box-shadow: 0 50px 100px -50px rgba(0,0,0,1), inset 0 0 0 1px rgba(255,255,255,.04); }
+@media (max-width: 700px) { .desk { aspect-ratio: 4 / 5; } }
+.desk::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.35)); }
+.pw { position: absolute; z-index: 2; left: 0; top: 0; width: 200px; height: 400px; border-radius: 28px; cursor: grab;
+  background: linear-gradient(145deg, rgba(255,255,255,.4), rgba(255,255,255,.06) 38%, rgba(255,255,255,.03) 62%, rgba(255,255,255,.2));
+  box-shadow: 0 30px 60px -22px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.32) inset, 0 1px 0 rgba(255,255,255,.8) inset;
+  backdrop-filter: blur(10px) saturate(1.7) brightness(1.06); -webkit-backdrop-filter: blur(10px) saturate(1.7) brightness(1.06);
+  transition: opacity .5s var(--ease), transform .55s var(--spring), filter .5s var(--ease), box-shadow .3s; }
+.pw.lens { backdrop-filter: url(#lg) saturate(1.7) brightness(1.08); }
+.pw.anim { transition: left .7s var(--spring), top .7s var(--spring), width .7s var(--spring), height .7s var(--spring), border-radius .7s var(--spring),
+  opacity .5s var(--ease), transform .55s var(--spring), filter .5s var(--ease), box-shadow .3s; }
+.pw.zoom { transition: left .16s var(--ease), top .16s var(--ease), width .16s var(--ease), height .16s var(--ease); }
+.pw.dragging { cursor: grabbing; transform: scale(1.012); box-shadow: 0 46px 80px -26px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.4) inset, 0 1px 0 rgba(255,255,255,.85) inset; }
+.pw.pinned { box-shadow: 0 30px 60px -22px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.32) inset, 0 1px 0 rgba(255,255,255,.8) inset, 0 0 0 3px rgba(160,150,255,.55), 0 0 40px rgba(140,130,255,.35); }
+.pw.full { border-radius: 0; }
+.pw.gone { opacity: 0; transform: scale(.94); filter: blur(10px); pointer-events: none; }
+.pw .pc { position: absolute; inset: 11px; border-radius: 19px; overflow: hidden; background: #0d0f1c; pointer-events: none; transition: border-radius .7s var(--spring), inset .7s var(--spring); }
+.pw.full .pc { inset: 0; border-radius: 0; }
+.pw .pc video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .45s .15s; }
+.pw .pc video.l { opacity: 0; }
+.pw.land .pc video.l { opacity: 1; } .pw.land .pc video.p { opacity: 0; }
+.pw .pcap { position: absolute; z-index: 5; left: 50%; top: 22px; display: flex; gap: 6px; padding: 6px 8px; border-radius: 999px;
+  transform: translate(-50%, -6px) scale(.92); opacity: 0; transition: opacity .3s var(--ease), transform .45s var(--spring);
+  background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.45); box-shadow: 0 10px 24px -10px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.6);
+  backdrop-filter: blur(12px) saturate(1.6); -webkit-backdrop-filter: blur(12px) saturate(1.6); }
+.pw .pcap i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; transition: background .2s, transform .25s var(--spring); }
+.pw .pcap svg { stroke: #fff; stroke-width: 2.3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.pw .pcap i:hover { background: rgba(255,255,255,.28); transform: scale(1.08); }
+.pw .pcap i.on { background: rgba(160,150,255,.6); }
+.pw .pcap svg { width: 15px; height: 15px; }
+.pw:hover .pcap, .pw.show-cap .pcap { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.pw.full .pcap { top: 26px; }
+.grip { position: absolute; z-index: 3; right: -6px; bottom: -6px; width: 34px; height: 34px; cursor: nwse-resize; }
+.grip::after { content: ""; position: absolute; right: 13px; bottom: 13px; width: 12px; height: 12px; border-right: 2.5px solid rgba(255,255,255,.75); border-bottom: 2.5px solid rgba(255,255,255,.75); border-bottom-right-radius: 8px; opacity: .0; transition: opacity .25s; }
+.pw:hover .grip::after { opacity: 1; }
+.pw.full .grip { display: none; }
+.hints { position: absolute; z-index: 3; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 24px); }
+.hints span { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff;
+  background: rgba(14,12,30,.5); border: 1px solid rgba(255,255,255,.2); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: background .3s, color .3s, opacity .3s; }
+.hints span::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #c8bfff; box-shadow: 0 0 0 0 rgba(200,191,255,.7); animation: hintpulse 2.2s infinite; }
+.hints span.done { background: rgba(95,227,161,.18); border-color: rgba(95,227,161,.45); }
+.hints span.done::before { background: var(--good); animation: none; }
+@keyframes hintpulse { 0% { box-shadow: 0 0 0 0 rgba(200,191,255,.7); } 70%, 100% { box-shadow: 0 0 0 8px rgba(200,191,255,0); } }
+@media (max-width: 700px) { .hints span.wheel { display: none; } }
+.again { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.9); opacity: 0; pointer-events: none; transition: opacity .4s .3s, transform .5s .3s var(--spring); }
+.desk.closed .again { opacity: 1; transform: translate(-50%, -50%); pointer-events: auto; }
+.desk.closed .hints { opacity: 0; }
+.mastered { position: absolute; z-index: 4; left: 50%; top: 18px; transform: translate(-50%, -10px); opacity: 0; pointer-events: none; padding: 9px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  background: rgba(95,227,161,.2); border: 1px solid rgba(95,227,161,.5); color: #dfffee; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: opacity .4s, transform .5s var(--spring); }
+.desk.mastered-on .mastered { opacity: 1; transform: translate(-50%, 0); }
+.trycta { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 26px; color: var(--muted); font-size: 15px; }
+.painting-credit { color: var(--faint); font-size: 12px; margin-top: 12px; }
+
 /* Cards with cursor spotlight */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
@@ -323,15 +383,25 @@ h2 { font-size: clamp(30px, 4.6vw, 52px); letter-spacing: -.035em; margin: 0 0 1
 .ico svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Real frames */
-.frames { perspective: 1400px; }
+/* No 3D transform here: it makes the browser resample the screenshot and blur it. */
 .frame { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--rim); box-shadow: 0 40px 90px -40px rgba(0,0,0,.95), 0 0 0 8px rgba(255,255,255,.02);
-  transform: rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition: transform .5s var(--ease); will-change: transform; }
-.frame img { width: 100%; }
+  transition: box-shadow .5s var(--ease), translate .5s var(--ease); }
+.frame:hover { translate: 0 -4px; box-shadow: 0 50px 100px -40px rgba(0,0,0,1), 0 0 0 8px rgba(255,255,255,.035); }
+.frame img { width: 100%; height: auto; }
 .frame::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgba(255,255,255,.12), transparent 35%); }
 .tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 22px; }
 .tags span { font-size: 13px; color: var(--muted); padding: 6px 12px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); }
 
-/* Lossless */
+/* Lossless: full-bleed moonlit sea */
+section.moon { padding: 130px 0 40px; margin: 40px 0; isolation: isolate; }
+section.moon::before { content: ""; position: absolute; inset: 0; z-index: -1; background: url(media/homer.jpg) center 42% / cover; opacity: .95;
+  filter: saturate(1.1) brightness(1.15);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 82%, transparent 100%); mask-image: linear-gradient(180deg, transparent 0%, #000 18%, #000 82%, transparent 100%); }
+section.moon::after { content: ""; position: absolute; inset: 0; z-index: -1;
+  background: radial-gradient(55% 75% at 22% 55%, rgba(6,7,12,.7), transparent 75%), linear-gradient(90deg, rgba(6,7,12,.35), transparent 60%); }
+section.moon .card { background: rgba(10,14,24,.45); }
+.credit { color: rgba(255,255,255,.45); font-size: 12px; margin-top: 70px; text-align: right; }
+.credit em { font-style: italic; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
 @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
 .bitbox { padding: 26px; }
@@ -436,9 +506,10 @@ footer a { color: var(--muted); }
 </nav>
 
 <main>
+<div class="hero-art" aria-hidden="true"></div>
 <header class="hero wrap">
   <a class="pill" href="#lossless" data-reveal><b>New</b> Bit-perfect lossless AirPlay music on Windows →</a>
-  <h1 data-reveal style="--i:1"><span class="grad">AirPlay to your PC.</span><br>Beautifully.</h1>
+  <h1 data-reveal style="--i:1"><span class="grad">AirPlay to your PC.</span><br><span class="serif">Beautifully.</span></h1>
   <p class="lede" data-reveal style="--i:2">Mirror your iPhone, iPad or Mac to Windows in a Liquid Glass window, and play AirPlay music in true lossless quality. No account, no setup, no bloat.</p>
   <div class="cta" data-reveal style="--i:3">
     <a class="btn primary pulse" href="#download">
@@ -556,6 +627,46 @@ footer a { color: var(--muted); }
   </div>
 </section>
 
+<!-- ===== Playground ===== -->
+<section id="try" style="padding-top: 40px">
+  <div class="wrap center">
+    <span class="eyebrow" data-reveal>Try it right here</span>
+    <h2 data-reveal style="--i:1">Go on, <span class="serif">grab it.</span></h2>
+    <p class="sub" data-reveal style="--i:2">This is the AirGlass Pro window, running in your browser. Drag it around, resize it from a corner, scroll to zoom, double-click for full screen, or rotate it.</p>
+    <div class="desk" id="desk" data-reveal style="--i:3">
+      <div class="mastered">✓ You've got it. That's AirGlass Pro.</div>
+      <div class="pw" id="pw" tabindex="0" aria-label="AirGlass window: drag to move, drag the corner to resize, scroll to zoom, double-click for full screen">
+        <div class="pc">
+          <video class="p" src="media/portrait.mp4" poster="media/portrait.jpg" muted loop playsinline preload="metadata"></video>
+          <video class="l" src="media/landscape.mp4" poster="media/landscape.jpg" muted loop playsinline preload="metadata"></video>
+        </div>
+        <div class="pcap">
+          <i data-act="close" title="Disconnect"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></i>
+          <i data-act="pin" title="Keep on top"><svg viewBox="0 0 24 24"><path d="M9 4h6l-1 6 4 3H6l4-3zM12 13v7"/></svg></i>
+          <i data-act="rotate" title="Rotate"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></i>
+          <i data-act="full" title="Full screen"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></i>
+        </div>
+        <span class="grip" aria-hidden="true"></span>
+      </div>
+      <div class="hints" aria-hidden="true">
+        <span data-h="drag">Drag it</span><span data-h="resize">Resize the corner</span><span class="wheel" data-h="zoom">Scroll to zoom</span><span data-h="full">Double-click</span><span data-h="rotate">Rotate ⟳</span>
+      </div>
+      <button class="btn primary again" id="again">Mirror again</button>
+    </div>
+    <p class="painting-credit">Wallpaper: Claude Monet, <em>The Houses of Parliament, Sunset</em>, 1903. National Gallery of Art, Washington, public domain.</p>
+    <div class="trycta" data-reveal>Like it? The floating window is AirGlass Pro. <a class="btn primary small" href="#pricing">Unlock for $2.99</a></div>
+  </div>
+</section>
+
+<!-- Liquid-glass refraction (Chromium): the rim bends whatever is behind the window. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="lg" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feImage id="lgmap" x="0" y="0" width="200" height="400" preserveAspectRatio="none" result="map"/>
+    <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="soft"/>
+    <feDisplacementMap in="soft" in2="map" scale="-46" xChannelSelector="R" yChannelSelector="B"/>
+  </filter>
+</svg>
+
 <!-- ===== Features ===== -->
 <section id="features">
   <div class="wrap">
@@ -580,18 +691,18 @@ footer a { color: var(--muted); }
     <h2 data-reveal style="--i:1">Real frames, rendered live.</h2>
     <p class="sub" data-reveal style="--i:2">Captured straight from AirGlass's GPU renderer: the refractive glass rim, the floating controls and the soft shadow are drawn every frame.</p>
     <div class="frames" data-reveal style="--i:3">
-      <div class="frame" id="frame"><img src="media/desktop.jpg" alt="AirGlass mirroring a Mac in landscape and an iPhone in portrait, in floating glass windows on a Windows desktop" loading="lazy" width="1600" height="900"></div>
+      <div class="frame" id="frame"><img src="media/desktop.jpg" srcset="media/desktop.jpg 1600w, media/desktop@2x.jpg 3200w" sizes="(max-width: 1160px) 100vw, 1128px" alt="AirGlass mirroring a Mac in landscape and an iPhone in portrait, in floating glass windows on a Windows desktop" loading="lazy" width="1600" height="900"></div>
     </div>
     <div class="tags" data-reveal style="--i:4"><span>Direct3D 11</span><span>DirectComposition</span><span>Spring physics</span><span>Per-pixel alpha</span><span>Hardware H.264</span></div>
   </div>
 </section>
 
 <!-- ===== Lossless ===== -->
-<section id="lossless">
+<section id="lossless" class="moon">
   <div class="wrap split">
     <div>
       <span class="eyebrow" data-reveal>Sound</span>
-      <h2 data-reveal style="--i:1">Every bit, exactly as sent.</h2>
+      <h2 data-reveal style="--i:1">Every bit, <span class="serif">exactly</span> as sent.</h2>
       <p class="sub" data-reveal style="--i:2; margin-bottom:0">Pick your PC from the AirPlay button in Music and AirGlass plays Apple Lossless at CD quality, verified bit-for-bit against the source in our test suite.</p>
       <ul class="checks" data-reveal style="--i:3">
         <li>ALAC 16-bit / 44.1 kHz, decoded bit-exact</li>
@@ -612,6 +723,7 @@ footer a { color: var(--muted); }
       <div class="hash"><span>PCM in = PCM out</span><span class="ok">✓ identical</span></div>
     </div>
   </div>
+  <p class="credit wrap">“Clair de Lune” means moonlight. Winslow Homer, <em>Moonlight, Wood Island Light</em>, 1894. The Metropolitan Museum of Art, public domain.</p>
 </section>
 
 <!-- ===== How it works ===== -->
@@ -716,7 +828,8 @@ footer a { color: var(--muted); }
 <footer>
   <div class="wrap row2">
     <span>© 2026 AirGlass · <a href="https://github.com/jdkuk/AirGlass">Source on GitHub</a> · <a href="https://github.com/jdkuk/AirGlass/tree/main/docs">Docs</a></span>
-    <span>AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc. AirGlass is not affiliated with or endorsed by Apple.</span>
+    <span>AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc. AirGlass is not affiliated with or endorsed by Apple.<br>
+      Paintings (public domain): Claude Monet, <em>The Houses of Parliament, Sunset</em>, 1903, National Gallery of Art; Winslow Homer, <em>Moonlight, Wood Island Light</em>, 1894, The Metropolitan Museum of Art.</span>
   </div>
 </footer>
 
@@ -758,16 +871,6 @@ footer a { color: var(--muted); }
     c.style.setProperty('--mx', (e.clientX - r.left) + 'px'); c.style.setProperty('--my', (e.clientY - r.top) + 'px');
   }));
 
-  /* Gentle tilt on the real-frames screenshot */
-  const frame = document.getElementById('frame');
-  if (!reduce && frame) {
-    frame.parentElement.addEventListener('pointermove', e => {
-      const r = frame.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
-      frame.style.setProperty('--ry', (x * 6).toFixed(2) + 'deg'); frame.style.setProperty('--rx', (-y * 5 + 2).toFixed(2) + 'deg');
-    });
-    frame.parentElement.addEventListener('pointerleave', () => { frame.style.setProperty('--ry', '0deg'); frame.style.setProperty('--rx', '6deg'); });
-  }
-
   /* Equaliser bars */
   const bars = (host, n, maxH) => { for (let i = 0; i < n; i++) { const b = document.createElement('i');
     b.style.setProperty('--d', (0.45 + Math.random() * 0.7).toFixed(2) + 's');
@@ -794,6 +897,181 @@ footer a { color: var(--muted); }
   stickyIO.observe(hero);
   document.getElementById('stickyx').onclick = () => { dismissed = true; sticky.classList.remove('show');
     try { sessionStorage.setItem('ag-sticky', '0'); } catch (e) {} };
+
+  /* ===== Playground: the grabbable AirGlass window ===== */
+  (() => {
+    const desk = document.getElementById('desk'), pw = document.getElementById('pw');
+    if (!desk || !pw) return;
+    const PORT = 886 / 1920, LAND = 16 / 9, MIN_LONG = 150;
+    const vids = [...pw.querySelectorAll('video')];
+    const hints = Object.fromEntries([...desk.querySelectorAll('.hints span')].map(s => [s.dataset.h, s]));
+    const st = { x: 0, y: 0, w: 0, h: 0, aspect: PORT, full: false, saved: null };
+    let mastered = false;
+
+    // Liquid glass: Chromium can use an SVG filter as backdrop-filter; the map bends only the rim.
+    const lensOK = /Chrome\//.test(navigator.userAgent) && !reduce;
+    const fe = document.getElementById('lgmap');
+    let lensQueued = false;
+    const updateLens = () => {
+      if (!lensOK || lensQueued) return;
+      lensQueued = true;
+      requestAnimationFrame(() => {
+        lensQueued = false;
+        const w = Math.round(pw.offsetWidth), h = Math.round(pw.offsetHeight), r = st.full ? 0 : 28, bez = 13;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs>` +
+          `<linearGradient id="r" x1="0" x2="1"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#f00"/></linearGradient>` +
+          `<linearGradient id="b" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#00f"/></linearGradient>` +
+          `<filter id="f"><feGaussianBlur stdDeviation="${bez * .55}"/></filter></defs>` +
+          `<rect width="${w}" height="${h}" fill="#000"/><rect width="${w}" height="${h}" fill="url(#r)"/>` +
+          `<rect width="${w}" height="${h}" fill="url(#b)" style="mix-blend-mode:screen"/>` +
+          `<rect x="${bez}" y="${bez}" width="${Math.max(1, w - 2 * bez)}" height="${Math.max(1, h - 2 * bez)}" rx="${Math.max(0, r - bez)}" fill="#808080" filter="url(#f)"/></svg>`;
+        fe.setAttribute('href', 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg));
+        fe.setAttribute('width', w); fe.setAttribute('height', h);
+      });
+    };
+    if (lensOK) pw.classList.add('lens');
+
+    const D = () => ({ W: desk.clientWidth, H: desk.clientHeight });
+    const clamp = () => {
+      const { W, H } = D();
+      const k = Math.min(1, W / st.w, H / st.h); st.w *= k; st.h *= k;
+      const long = Math.max(st.w, st.h);
+      if (long < MIN_LONG) { const m = MIN_LONG / long; st.w *= m; st.h *= m; }
+      st.x = Math.min(Math.max(st.x, 60 - st.w), W - 60);
+      st.y = Math.min(Math.max(st.y, 0), H - 50);
+    };
+    const place = mode => {
+      pw.classList.toggle('anim', mode === 'anim');
+      pw.classList.toggle('zoom', mode === 'zoom');
+      Object.assign(pw.style, { left: st.x + 'px', top: st.y + 'px', width: st.w + 'px', height: st.h + 'px' });
+      updateLens();
+      if (mode === 'anim') setTimeout(updateLens, 720);
+    };
+    const home = () => {
+      const { W, H } = D();
+      st.aspect = PORT; st.full = false; pw.classList.remove('land', 'full');
+      st.h = H * (W > H ? .8 : .66); st.w = st.h * st.aspect;
+      st.x = W * (W > H ? .58 : .5) - st.w / 2; st.y = (H - st.h) / 2 - H * .02;
+      clamp();
+    };
+    const done = k => {
+      if (!hints[k] || hints[k].classList.contains('done')) return;
+      hints[k].classList.add('done');
+      const need = Object.values(hints).filter(s => getComputedStyle(s).display !== 'none');
+      if (!mastered && need.every(s => s.classList.contains('done'))) {
+        mastered = true; desk.classList.add('mastered-on'); setTimeout(() => desk.classList.remove('mastered-on'), 4200);
+      }
+    };
+
+    // Move
+    let drag = null;
+    pw.addEventListener('pointerdown', e => {
+      if (st.full || e.button !== 0 || e.target.closest('.pcap, .grip')) return;
+      drag = { px: e.clientX, py: e.clientY, x: st.x, y: st.y, moved: false };
+      pw.setPointerCapture(e.pointerId); pw.classList.add('dragging');
+    });
+    pw.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const dx = e.clientX - drag.px, dy = e.clientY - drag.py;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      st.x = drag.x + dx; st.y = drag.y + dy; clamp(); place('none');
+    });
+    const endDrag = () => { if (!drag) return; if (drag.moved) done('drag'); drag = null; pw.classList.remove('dragging'); };
+    pw.addEventListener('pointerup', endDrag); pw.addEventListener('pointercancel', endDrag);
+
+    // Resize from the corner (keeps the device's shape)
+    const grip = pw.querySelector('.grip');
+    let rs = null;
+    grip.addEventListener('pointerdown', e => {
+      e.stopPropagation(); rs = { px: e.clientX, py: e.clientY, w: st.w, h: st.h };
+      grip.setPointerCapture(e.pointerId); pw.classList.add('dragging');
+    });
+    grip.addEventListener('pointermove', e => {
+      if (!rs) return;
+      const dx = e.clientX - rs.px, dy = e.clientY - rs.py;
+      st.w = Math.max(rs.w + dx, (rs.h + dy) * st.aspect); st.h = st.w / st.aspect;
+      const { W, H } = D(); const k = Math.min(1, (W - st.x) / st.w, (H - st.y) / st.h); st.w *= k; st.h *= k;
+      clamp(); place('none'); done('resize');
+    });
+    const endRs = () => { rs = null; pw.classList.remove('dragging'); };
+    grip.addEventListener('pointerup', endRs); grip.addEventListener('pointercancel', endRs);
+
+    // Smooth zoom around the cursor
+    const zoomAt = (f, cx, cy) => {
+      const ax = (cx - st.x) / st.w, ay = (cy - st.y) / st.h;
+      st.w *= f; st.h *= f; clamp();
+      st.x = cx - ax * st.w; st.y = cy - ay * st.h; clamp(); place('zoom'); done('zoom');
+    };
+    pw.addEventListener('wheel', e => {
+      if (st.full) return;
+      e.preventDefault();
+      const r = desk.getBoundingClientRect();
+      zoomAt(Math.min(1.25, Math.max(.8, Math.pow(1.0018, -e.deltaY))), e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+
+    // Full screen
+    const toggleFull = () => {
+      if (!st.full) { st.saved = { ...st }; const { W, H } = D(); Object.assign(st, { x: 0, y: 0, w: W, h: H, full: true }); pw.classList.add('full'); }
+      else { Object.assign(st, { x: st.saved.x, y: st.saved.y, w: st.saved.w, h: st.saved.h, full: false }); pw.classList.remove('full'); clamp(); }
+      place('anim'); done('full');
+    };
+    pw.addEventListener('dblclick', e => { if (!e.target.closest('.pcap')) toggleFull(); });
+
+    // Rotate: keep the centre and the long side, morph to the other shape
+    const rotate = () => {
+      st.aspect = st.aspect < 1 ? LAND : PORT;
+      pw.classList.toggle('land', st.aspect > 1);
+      if (!st.full) {
+        const cx = st.x + st.w / 2, cy = st.y + st.h / 2, long = Math.max(st.w, st.h);
+        if (st.aspect > 1) { st.w = long; st.h = long / st.aspect; } else { st.h = long; st.w = long * st.aspect; }
+        const { W, H } = D(); const k = Math.min(1, W * .92 / st.w, H * .92 / st.h); st.w *= k; st.h *= k;
+        st.x = cx - st.w / 2; st.y = cy - st.h / 2; clamp();
+      }
+      place('anim'); done('rotate');
+    };
+
+    // Capsule buttons
+    pw.querySelector('.pcap').addEventListener('pointerdown', e => e.stopPropagation());
+    pw.querySelector('.pcap').addEventListener('click', e => {
+      const b = e.target.closest('i'); if (!b) return;
+      const act = b.dataset.act;
+      if (act === 'full') toggleFull();
+      if (act === 'rotate') rotate();
+      if (act === 'pin') { b.classList.toggle('on'); pw.classList.toggle('pinned'); }
+      if (act === 'close') { pw.classList.add('gone'); desk.classList.add('closed'); vids.forEach(v => v.pause()); }
+    });
+    document.getElementById('again').onclick = () => {
+      home(); place('none'); pw.classList.remove('gone'); desk.classList.remove('closed'); vids.forEach(v => v.play().catch(() => {}));
+    };
+
+    // Keyboard: arrows move, +/- zoom, F full screen, R rotate
+    pw.addEventListener('keydown', e => {
+      const step = e.shiftKey ? 40 : 14;
+      const k = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+      if (k && !st.full) { st.x += k[0]; st.y += k[1]; clamp(); place('zoom'); done('drag'); e.preventDefault(); }
+      if (e.key === '+' || e.key === '=') { zoomAt(1.1, st.x + st.w / 2, st.y + st.h / 2); e.preventDefault(); }
+      if (e.key === '-') { zoomAt(1 / 1.1, st.x + st.w / 2, st.y + st.h / 2); e.preventDefault(); }
+      if (e.key === 'f' || e.key === 'F') toggleFull();
+      if (e.key === 'r' || e.key === 'R') rotate();
+    });
+
+    // Keep it sensible when the page is resized
+    let last = D();
+    new ResizeObserver(() => {
+      const now = D(); if (!now.W || !now.H) return;
+      if (st.full) Object.assign(st, { x: 0, y: 0, w: now.W, h: now.H });
+      else { const k = now.W / (last.W || now.W); st.x *= k; st.y *= now.H / (last.H || now.H); st.w *= k; st.h = st.w / st.aspect; clamp(); }
+      last = now; place('none');
+    }).observe(desk);
+
+    home(); place('none');
+    // Nudge: show the controls for a moment when the playground scrolls into view
+    new IntersectionObserver(es => {
+      const vis = es[0].isIntersecting;
+      vids.forEach(v => (vis && !desk.classList.contains('closed')) ? v.play().catch(() => {}) : v.pause());
+      if (vis && !pw.dataset.nudged) { pw.dataset.nudged = 1; pw.classList.add('show-cap'); setTimeout(() => pw.classList.remove('show-cap'), 2600); }
+    }, { threshold: .35 }).observe(desk);
+  })();
 
   /* ===== Demo timeline ===== */
   const stage = document.getElementById('stage');
