@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AirGlass — AirPlay receiver for Windows</title>
+<meta name="description" content="Mirror your iPhone, iPad or Mac to a Windows PC and play AirPlay music in true lossless quality. Free to try; Pro unlocks the floating glass window for $2.99.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="icon.png">
+<meta property="og:title" content="AirGlass — AirPlay receiver for Windows">
+<meta property="og:description" content="Screen Mirroring and lossless AirPlay music on Windows, in a Liquid Glass window.">
+<meta property="og:image" content="https://jdkuk.github.io/AirGlass/og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+  :root {
+    --bg: #07080d;
+    --ink: #f3f5fb;
+    --muted: #a3a9bd;
+    --faint: #6d738a;
+    --glass: rgba(255, 255, 255, 0.06);
+    --glass-strong: rgba(255, 255, 255, 0.10);
+    --rim: rgba(255, 255, 255, 0.14);
+    --accent: #7c8cff;
+    --accent-2: #b46cff;
+    --good: #5ee0a0;
+    --radius: 22px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  a { color: inherit; }
+  .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .aurora i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; animation: drift 22s ease-in-out infinite alternate; }
+  .aurora i:nth-child(1) { width: 620px; height: 620px; left: -120px; top: -160px; background: #3f4dff; }
+  .aurora i:nth-child(2) { width: 520px; height: 520px; right: -140px; top: 120px; background: #9b3cff; animation-delay: -7s; }
+  .aurora i:nth-child(3) { width: 480px; height: 480px; left: 30%; top: 70vh; background: #00a6c8; opacity: .3; animation-delay: -13s; }
+  @keyframes drift { to { transform: translate(60px, 40px) scale(1.12); } }
+  @media (prefers-reduced-motion: reduce) { .aurora i { animation: none; } }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; text-decoration: none; }
+  .brand img { width: 32px; height: 32px; border-radius: 8px; }
+  .navlinks { display: flex; gap: 22px; align-items: center; font-size: 15px; color: var(--muted); }
+  .navlinks a { text-decoration: none; }
+  .navlinks a:hover { color: var(--ink); }
+  @media (max-width: 640px) { .navlinks a.hide-sm { display: none; } }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 999px;
+    font-weight: 600; text-decoration: none; border: 1px solid var(--rim); background: var(--glass-strong);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: transform .15s, background .15s;
+  }
+  .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,.16); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; color: #fff; box-shadow: 0 10px 30px -10px rgba(124,140,255,.7); }
+  .btn.small { padding: 8px 14px; font-size: 14px; }
+
+  header.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 56px 0 80px; }
+  @media (max-width: 900px) { header.hero { grid-template-columns: 1fr; padding-top: 24px; } }
+  header.hero > *, .grid > *, .steps > *, .pricing > *, .legal > * { min-width: 0; }
+  .eyebrow { display: inline-block; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: #c9cffc; padding: 6px 12px; border-radius: 999px; background: var(--glass); border: 1px solid var(--rim); }
+  h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.04; letter-spacing: -0.03em; margin: 18px 0 18px; font-weight: 800; }
+  h1 .grad { background: linear-gradient(120deg, #fff 10%, #b9c1ff 45%, #e0b3ff 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { font-size: 19px; color: var(--muted); max-width: 520px; margin: 0 0 28px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .fine { color: var(--faint); font-size: 13px; margin-top: 14px; }
+
+  /* Glass window mockup */
+  .stage { position: relative; aspect-ratio: 16 / 11; }
+  .desk { position: absolute; inset: 0; border-radius: 26px; background: linear-gradient(160deg, #1a1d2e, #0d0f18); border: 1px solid rgba(255,255,255,.07); overflow: hidden; }
+  .desk::after { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 50% at 30% 20%, rgba(124,140,255,.25), transparent 70%), radial-gradient(50% 50% at 80% 80%, rgba(180,108,255,.22), transparent 70%); }
+  .slab {
+    position: absolute; left: 50%; top: 50%; width: 34%; aspect-ratio: 0.4613; transform: translate(-50%, -50%) rotate(-2deg);
+    border-radius: 18% / 8.3%; padding: 3.5%; background: rgba(255,255,255,.10);
+    border: 1px solid rgba(255,255,255,.35); box-shadow: 0 30px 70px -20px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.5);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: float 6s ease-in-out infinite;
+  }
+  @keyframes float { 50% { transform: translate(-50%, -53%) rotate(-1deg); } }
+  @media (prefers-reduced-motion: reduce) { .slab { animation: none; } }
+  .screen { width: 100%; height: 100%; border-radius: 15% / 7%; overflow: hidden; position: relative;
+    background: linear-gradient(170deg, #ff9a6b 0%, #ff5fa2 35%, #7a5cff 70%, #2a2f8f 100%); }
+  .screen .time { position: absolute; top: 19%; width: 100%; text-align: center; font-weight: 300; font-size: clamp(22px, 3.4vw, 40px); color: rgba(255,255,255,.95); letter-spacing: -.02em; }
+  .screen .date { position: absolute; top: 15%; width: 100%; text-align: center; font-size: clamp(8px, .9vw, 11px); color: rgba(255,255,255,.85); font-weight: 600; }
+  .screen .np { position: absolute; left: 7%; right: 7%; bottom: 8%; height: 17%; border-radius: 14px; background: rgba(255,255,255,.22); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.3); }
+  .screen .np::before { content: ""; position: absolute; left: 7%; top: 18%; height: 64%; aspect-ratio: 1; border-radius: 8px; background: linear-gradient(135deg, #ffd36b, #ff6b9a); }
+  .capsule { position: absolute; left: 50%; top: 6%; transform: translateX(-50%); display: flex; gap: 10px; padding: 7px 12px; border-radius: 999px;
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-size: 12px; color: #fff; }
+  .capsule span { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.12); }
+  .badge-float { position: absolute; right: 4%; bottom: 7%; padding: 10px 14px; border-radius: 14px; font-size: 13px; background: rgba(10,12,20,.6); border: 1px solid var(--rim); backdrop-filter: blur(12px); }
+  .badge-float b { color: var(--good); }
+
+  section { padding: 72px 0; }
+  h2 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -0.02em; margin: 0 0 12px; line-height: 1.15; }
+  .sub { color: var(--muted); margin: 0 0 36px; max-width: 640px; font-size: 17px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--glass); border: 1px solid var(--rim); border-radius: var(--radius); padding: 24px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .card h3 { margin: 12px 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(135deg, rgba(124,140,255,.35), rgba(180,108,255,.35)); border: 1px solid var(--rim); }
+  .ico svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: s; }
+  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+  .step { counter-increment: s; }
+  .step::before { content: counter(s); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font-weight: 700; background: var(--glass-strong); border: 1px solid var(--rim); }
+
+  .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 820px; }
+  @media (max-width: 700px) { .pricing { grid-template-columns: 1fr; } }
+  .plan { display: flex; flex-direction: column; }
+  .plan.pro { background: linear-gradient(160deg, rgba(124,140,255,.16), rgba(180,108,255,.12)); border-color: rgba(160,150,255,.45); }
+  .price { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 2px; }
+  .price small { font-size: 15px; font-weight: 500; color: var(--muted); }
+  .plan ul { list-style: none; padding: 0; margin: 18px 0 24px; flex: 1; }
+  .plan li { padding: 7px 0 7px 28px; position: relative; color: #dfe3f2; font-size: 15px; }
+  .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--good); font-weight: 700; }
+  .plan li.no { color: var(--faint); }
+  .plan li.no::before { content: "–"; color: var(--faint); }
+
+  details { border-bottom: 1px solid rgba(255,255,255,.08); padding: 16px 0; max-width: 820px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 17px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+  summary::after { content: "+"; color: var(--muted); font-weight: 400; }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--muted); margin: 10px 0 0; }
+
+  .legal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .legal { grid-template-columns: 1fr; } }
+  .legal h3 { margin-top: 0; }
+  .legal p, .legal li { color: var(--muted); font-size: 14px; }
+  .legal ul { padding-left: 18px; margin: 8px 0 0; }
+
+  footer { padding: 40px 0 60px; color: var(--faint); font-size: 13px; border-top: 1px solid rgba(255,255,255,.06); }
+  footer .row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#"><img src="icon.png" alt=""> AirGlass</a>
+    <div class="navlinks">
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#pricing">Pricing</a>
+      <a class="hide-sm" href="#faq">FAQ</a>
+      <a class="btn small" href="#download">Download</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <span class="eyebrow">For Windows 10 &amp; 11</span>
+      <h1><span class="grad">AirPlay to your PC.</span><br>Beautifully.</h1>
+      <p class="lede">Mirror your iPhone, iPad or Mac to Windows in a Liquid Glass window, and play AirPlay music in true lossless quality. No accounts, no bloat, nothing to configure.</p>
+      <div class="cta">
+        <a class="btn primary" id="download-hero" href="#download">Download free</a>
+        <a class="btn" href="#pricing">Get Pro · $2.99</a>
+      </div>
+      <p class="fine">Free forever for full-screen mirroring. Pro is a one-time $2.99.</p>
+    </div>
+    <div class="stage" aria-label="AirGlass mirroring an iPhone in a floating glass window">
+      <div class="desk"></div>
+      <div class="slab">
+        <div class="screen">
+          <div class="date">TUESDAY 7 OCTOBER</div>
+          <div class="time">9:41</div>
+          <div class="np"></div>
+        </div>
+        <div class="capsule"><span>✕</span><span>📌</span><span>⤢</span></div>
+      </div>
+      <div class="badge-float">Music: <b>Apple Lossless · bit-perfect</b></div>
+    </div>
+  </header>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Made to feel native.</h2>
+    <p class="sub">AirGlass is a small native Windows app written for speed. It shows up as an AirPlay receiver for every Apple device on your network.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <h3>Screen Mirroring</h3>
+        <p>Control Center → Screen Mirroring → your PC. The picture pops in within a blink and melts away when you stop.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <h3>Lossless music</h3>
+        <p>AirPlay audio arrives as Apple Lossless (16-bit/44.1 kHz) and is decoded bit-for-bit, with a studio-grade resampler.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
+        <h3>Smooth</h3>
+        <p>Hardware video decoding, about 60 fps mirroring, and an interface that animates at your display's refresh rate, up to 120 Hz.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M21 3 12 12"/></svg></div>
+        <h3>Rotation that flows</h3>
+        <p>Turn your phone and the glass window morphs between portrait and landscape instead of jumping.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></div>
+        <h3>Tiny &amp; clean</h3>
+        <p>No Bonjour install, no .NET, no browser engine, no adware. It sits quietly in the tray.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></svg></div>
+        <h3>Private</h3>
+        <p>Everything stays on your local network. No account, no analytics, no cloud.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Up and running in a minute.</h2>
+    <p class="sub">There's no pairing or setup. Your PC and the Apple device just need to be on the same network.</p>
+    <div class="steps">
+      <div class="card step"><h3>Install AirGlass</h3><p>Run the installer. It adds itself to the tray and starts with Windows.</p></div>
+      <div class="card step"><h3>Pick your PC</h3><p>On your iPhone, iPad or Mac, open Screen Mirroring (or the AirPlay button in Music) and choose your PC's name.</p></div>
+      <div class="card step"><h3>That's it</h3><p>Your screen appears on the PC. Music plays through your PC's speakers in lossless quality.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <h2>Try it free. Unlock the window for $2.99.</h2>
+    <p class="sub">The free edition does everything full screen, so you can check it works with your devices before you pay a penny.</p>
+    <div class="pricing">
+      <div class="card plan">
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <ul>
+          <li>Screen Mirroring, full screen</li>
+          <li>Lossless AirPlay music</li>
+          <li>iPhone, iPad and Mac</li>
+          <li class="no">Floating glass window</li>
+          <li class="no">Move, resize, zoom, keep on top</li>
+        </ul>
+        <a class="btn" href="#download">Download free</a>
+      </div>
+      <div class="card plan pro">
+        <h3>Pro</h3>
+        <div class="price">$2.99 <small>one-time</small></div>
+        <ul>
+          <li>Everything in Free</li>
+          <li>Floating Liquid Glass window</li>
+          <li>Move, resize, smooth zoom</li>
+          <li>Keep on top and corner float</li>
+          <li>Use on up to 3 PCs</li>
+        </ul>
+        <a class="btn primary" id="buy" href="https://airglass.lemonsqueezy.com/">Buy AirGlass Pro</a>
+      </div>
+    </div>
+    <p class="fine">Prices in USD; local taxes are added at checkout. Payment is processed by Lemon Squeezy, our merchant of record. Your license key arrives by email: paste it into AirGlass (tray icon → <em>Unlock windowed mode</em>).</p>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="card" style="text-align:center; padding:40px 24px;">
+      <img src="icon.png" alt="" width="72" height="72" style="border-radius:16px">
+      <h2 style="margin-top:14px">Download AirGlass</h2>
+      <p class="sub" style="margin:0 auto 24px">Windows 10 or 11, 64-bit. Free edition included, and Pro unlocks with a key.</p>
+      <a class="btn primary" id="download-btn" href="https://github.com/jdkuk/AirGlass/releases/latest">Download for Windows</a>
+      <p class="fine">Includes the full source code (GPL-3.0).</p>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Questions</h2>
+    <details><summary>Does my PC need to be on the same Wi-Fi?</summary><p>It needs to be on the same network as your Apple device. Wi-Fi and Ethernet on the same router is fine. Guest networks and routers with "client isolation" block AirPlay.</p></details>
+    <details><summary>Which devices work?</summary><p>iPhone, iPad and Mac with Screen Mirroring, plus any app that plays AirPlay audio (Music, Spotify, podcasts and so on).</p></details>
+    <details><summary>Does it mirror in 4K?</summary><p>AirGlass asks your device for 1080p. Phones can't mirror 4K landscape smoothly (they drop to about 28 fps), and 1080p gives about 60 fps. Full screen is upscaled with a high-quality filter.</p></details>
+    <details><summary>Can I AirPlay a YouTube or Netflix video?</summary><p>Use Screen Mirroring. AirGlass doesn't support the "cast a video link" kind of AirPlay that some video apps use, and many of those apps block it on non-Apple receivers anyway.</p></details>
+    <details><summary>Is there a subscription?</summary><p>No. Pro is a one-time $2.99 that you can use on up to 3 of your PCs.</p></details>
+    <details><summary>Is it open source?</summary><p>Yes. AirGlass is licensed under the GPL-3.0 and the full source code comes with every download. Buying Pro supports development and gets you the ready-made installer, updates and support.</p></details>
+    <details><summary>Windows warns me about the installer. Is it safe?</summary><p>New apps from small developers can trigger a SmartScreen warning until they build up reputation. Click <em>More info → Run anyway</em>. The installer doesn't need administrator rights except to add one firewall rule so your devices can find the PC.</p></details>
+  </div>
+</section>
+
+<section id="legal">
+  <div class="wrap">
+    <div class="legal">
+      <div class="card" id="refunds">
+        <h3>Refund policy</h3>
+        <p>If AirGlass Pro doesn't work for you, ask for a full refund within <strong>14 days</strong> of purchase, with no questions asked. Reply to your receipt email or use the link in it. Refunded license keys are deactivated.</p>
+      </div>
+      <div class="card" id="privacy">
+        <h3>Privacy</h3>
+        <ul>
+          <li>AirGlass has no analytics, tracking or account.</li>
+          <li>Mirroring and music stay on your local network.</li>
+          <li>Activating Pro sends your license key and PC name to Lemon Squeezy to check the key. AirGlass re-checks it once per start.</li>
+          <li>Purchases are handled by Lemon Squeezy (merchant of record) under their privacy policy.</li>
+          <li>This website uses no cookies or trackers.</li>
+        </ul>
+      </div>
+      <div class="card" id="terms">
+        <h3>Terms</h3>
+        <p>AirGlass is provided as-is, without warranty, under the GNU GPL-3.0. A Pro license is personal, one-time and valid on up to 3 PCs. Support and questions: <a href="https://github.com/jdkuk/AirGlass/issues">open a support request</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap row">
+    <span>© 2026 AirGlass · <a href="https://github.com/jdkuk/AirGlass">Source on GitHub</a> · <a href="https://github.com/jdkuk/AirGlass/tree/main/docs">Docs</a></span>
+    <span>AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc. AirGlass is not affiliated with or endorsed by Apple.</span>
+  </div>
+</footer>
+</body>
+</html>

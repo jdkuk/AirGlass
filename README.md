@@ -17,8 +17,8 @@ and play AirPlay music in true lossless quality.
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c?logo=cplusplus&logoColor=white)
 
 [**Download**](https://github.com/jdkuk/AirGlass/releases/latest) ·
-[**Website**](https://jdkuk.github.io/airglass/) ·
-[Get Pro ($2.99)](https://jdkuk.github.io/airglass/#pricing) ·
+[**Website**](https://jdkuk.github.io/AirGlass/) ·
+[Get Pro ($2.99)](https://jdkuk.github.io/AirGlass/#pricing) ·
 [Docs](docs/README.md) ·
 [Report a bug](https://github.com/jdkuk/AirGlass/issues/new/choose)
 

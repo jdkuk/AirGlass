@@ -68,7 +68,7 @@ jobs:
             foreach ($l in $lines[$start..($lines.Count - 1)]) { if ($l -match '^## \[') { break }; $notes += $l }
           }
           $notes += '', '---', '**Download:** `AirGlass-Setup-' + $version + '.exe` below. The source zip is included as the GPL requires.',
-            'Pro unlock: https://jdkuk.github.io/airglass/#pricing'
+            'Pro unlock: https://jdkuk.github.io/AirGlass/#pricing'
           $notes -join "`n" | Set-Content "$env:RUNNER_TEMP/notes.md" -Encoding utf8
 
       - name: Publish GitHub Release
