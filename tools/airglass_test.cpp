@@ -7,6 +7,8 @@
 //                                           audio-only sender (Music app): ALAC + metadata + DACP remote
 //   airglass_test resampler                 resampler quality vs. the old linear interpolation
 //   airglass_test resolve <instance> <type> one-shot mDNS SRV lookup
+//   airglass_test license activate|validate <key> <pc name|instance id>
+//                                           Lemon Squeezy license round trip (AirGlass Pro)
 #include "common.h"
 
 #include <cstdio>

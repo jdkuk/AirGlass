@@ -784,6 +784,15 @@ void GlassWindow::SaveSnapshotLocked(int index) {
     D3D11_MAPPED_SUBRESOURCE m;
     if (FAILED(ctx_->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &m))) return;
     int w = int(d.Width), h = int(d.Height);
+    if (GetEnvironmentVariableW(L"AIRGLASS_DEBUG_SNAPSHOT_RAW", nullptr, 0)) {
+        // Also keep the real transparency: premultiplied BGRA, top-down (README/marketing shots).
+        wchar_t raw[64];
+        swprintf(raw, 64, L"\\snap_%02d_%dx%d.bgra", index, w, h);
+        if (FILE* rf = _wfopen((snapDir_ + raw).c_str(), L"wb")) {
+            for (int y = 0; y < h; ++y) fwrite(static_cast<const uint8_t*>(m.pData) + size_t(y) * m.RowPitch, 1, size_t(w) * 4, rf);
+            fclose(rf);
+        }
+    }
     int stride = (w * 3 + 3) & ~3;
     std::vector<uint8_t> px(size_t(stride) * h);
     for (int y = 0; y < h; ++y) {

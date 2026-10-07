@@ -1,0 +1,18 @@
+# Categories for automatically generated release notes.
+changelog:
+  exclude:
+    labels: ["skip-changelog"]
+    authors: ["dependabot"]
+  categories:
+    - title: ✨ New
+      labels: ["enhancement", "feature"]
+    - title: 🐞 Fixes
+      labels: ["bug"]
+    - title: 🎧 Audio & video quality
+      labels: ["quality"]
+    - title: 📖 Docs
+      labels: ["documentation"]
+    - title: 🔧 Maintenance
+      labels: ["ci", "dependencies", "maintenance"]
+    - title: Other changes
+      labels: ["*"]

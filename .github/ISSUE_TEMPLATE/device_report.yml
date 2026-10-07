@@ -1,0 +1,38 @@
+name: 📱 Device report
+description: Tell us how AirGlass works with your devices (works great or not), so we can track compatibility
+labels: ["device-report"]
+body:
+  - type: input
+    id: sender
+    attributes:
+      label: Sending device and OS
+      placeholder: "iPad Air (M2), iPadOS 26.5"
+    validations:
+      required: true
+  - type: input
+    id: pc
+    attributes:
+      label: PC (Windows version, GPU, network)
+      placeholder: "Windows 11 24H2, Intel Arc, Wi-Fi 6"
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works?
+      options:
+        - label: PC appears in Screen Mirroring
+        - label: Mirroring picture
+        - label: Mirroring sound
+        - label: Rotation
+        - label: AirPlay music (lossless)
+        - label: Play/pause/next from the PC
+  - type: input
+    id: fps
+    attributes:
+      label: Frame rate from the log (optional)
+      placeholder: "mirror: 58.9 fps, 7.2 Mbit/s, hardware decode"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes

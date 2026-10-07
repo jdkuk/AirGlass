@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Troubleshooting guide
+    url: https://github.com/jdkuk/AirGlass/blob/main/docs/troubleshooting.md
+    about: Fixes for "my PC doesn't show up", firewall, VPN and sound problems.
+  - name: 💬 Questions & ideas (Discussions)
+    url: https://github.com/jdkuk/AirGlass/discussions
+    about: Ask a question or share an idea with the community.
+  - name: 🧾 Purchases, refunds and license keys
+    url: https://jdkuk.github.io/airglass/#refunds
+    about: Reply to your Lemon Squeezy receipt email. Refunds are available within 14 days.
+  - name: 🔒 Security vulnerability
+    url: https://github.com/jdkuk/AirGlass/security/advisories/new
+    about: Please report security problems privately.

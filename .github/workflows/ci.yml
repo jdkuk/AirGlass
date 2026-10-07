@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Cache toolchain and FFmpeg
+        uses: actions/cache@v6
+        with:
+          path: |
+            .toolchain
+            third_party/dl
+            third_party/ffmpeg-*
+          key: deps-${{ runner.os }}-${{ hashFiles('tools/fetch-deps.ps1') }}
+
+      - name: Fetch dependencies
+        run: ./tools/fetch-deps.ps1
+
+      - name: Build (release)
+        run: python build.py
+
+      - name: Build (Pro personal build compiles too)
+        run: python build.py --pro
+
+      - name: Rebuild release (the artifact must be the free edition)
+        run: python build.py
+
+      - name: Crypto self-test
+        run: |
+          $p = Start-Process build/AirGlass.exe -ArgumentList '--selftest' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:LOCALAPPDATA/AirGlass/selftest.log"; exit 1 }
+          'PASS crypto self-test'
+
+      - name: Resampler quality
+        run: ./build/airglass_test.exe resampler
+
+      - name: bplist cross-check (C++ vs Python plistlib)
+        run: python tools/bplist_check.py "$env:RUNNER_TEMP/bplist" build/airglass_test.exe
+
+      - name: Generate test media
+        run: |
+          $ff = (Resolve-Path third_party/ffmpeg-*/bin/ffmpeg.exe).Path
+          New-Item -ItemType Directory -Force build/testmedia | Out-Null
+          & $ff -hide_banner -loglevel error -y -f lavfi -i testsrc2=s=886x1920:r=30:d=6 -c:v libopenh264 -b:v 6M -pix_fmt yuv420p build/testmedia/portrait.mp4
+          & $ff -hide_banner -loglevel error -y -f lavfi -i testsrc2=s=1920x1080:r=30:d=6 -c:v libopenh264 -b:v 6M -pix_fmt yuv420p build/testmedia/landscape.mp4
+          & $ff -hide_banner -loglevel error -y -f lavfi -i "sine=f=440:d=6" -ac 2 -ar 44100 -c:a alac build/testmedia/music_alac.m4a
+
+      - name: Loopback end-to-end (mirroring + lossless music)
+        # Hosted runners have no GPU; the receiver uses the basic render driver and stays hidden.
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          $env:AIRGLASS_DEBUG_SNAPSHOT = "$env:RUNNER_TEMP/snaps"
+          $env:AIRGLASS_DEBUG_SNAPSHOT_TIMES = '1.0,7.0'
+          $app = Start-Process build/AirGlass.exe -ArgumentList '--loopback','--debug' -PassThru
+          Start-Sleep 3
+          $ok = $true
+          ./build/airglass_test.exe stream build/testmedia/portrait.mp4 build/testmedia/landscape.mp4 --port 7010
+          if ($LASTEXITCODE -ne 0) { $ok = $false }
+          ./build/airglass_test.exe music build/testmedia/music_alac.m4a --port 7010
+          if ($LASTEXITCODE -ne 0) { $ok = $false }
+          Stop-Process -Id $app.Id -ErrorAction SilentlyContinue
+          Get-Content "$env:LOCALAPPDATA/AirGlass/airglass-loopback.log" -Tail 60
+          if (-not $ok) { exit 1 }
+
+      - name: Collect logs
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/logs" | Out-Null
+          Copy-Item "$env:LOCALAPPDATA/AirGlass/*.log" "$env:RUNNER_TEMP/logs" -ErrorAction SilentlyContinue
+
+      - name: Upload logs and snapshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs
+          path: |
+            ${{ runner.temp }}/logs
+            ${{ runner.temp }}/snaps
+          if-no-files-found: ignore
+
+      - name: Upload build
+        uses: actions/upload-artifact@v7
+        with:
+          name: AirGlass-${{ github.sha }}
+          path: |
+            build/AirGlass.exe
+            build/avcodec-*.dll
+            build/avutil-*.dll
+            build/swresample-*.dll
+
+  installer:
+    name: Installer
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .toolchain
+            third_party/dl
+            third_party/ffmpeg-*
+          key: deps-${{ runner.os }}-${{ hashFiles('tools/fetch-deps.ps1') }}
+
+      - name: Fetch dependencies and build
+        run: |
+          ./tools/fetch-deps.ps1
+          python build.py
+
+      - name: Install Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Compile installer (CI build, not for release)
+        run: |
+          $ff = (Get-ChildItem third_party -Directory -Filter 'ffmpeg-*' | Select-Object -First 1).FullName
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" /Q "/DAppVersion=0.0.0-ci" "/DFfmpegDir=$ff" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AirGlass-Setup-ci
+          path: dist/*.exe

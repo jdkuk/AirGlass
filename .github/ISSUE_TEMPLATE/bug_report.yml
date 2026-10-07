@@ -1,0 +1,81 @@
+name: 🐞 Bug report
+description: Something doesn't work as it should
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! First check [Troubleshooting](https://github.com/jdkuk/AirGlass/blob/main/docs/troubleshooting.md):
+        most "my PC doesn't show up" problems are network or firewall settings.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: "I chose my PC in Screen Mirroring on my iPhone, the window appeared, then froze after ~10 seconds."
+    validations:
+      required: true
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Which part?
+      options:
+        - Screen Mirroring (picture)
+        - Screen Mirroring (sound)
+        - AirPlay music
+        - PC doesn't appear on the device
+        - The window (moving, resizing, full screen…)
+        - Pro unlock / license key
+        - Installer
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: sender
+    attributes:
+      label: Sending device and OS
+      placeholder: "iPhone 16 Pro, iOS 26.6"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version and GPU
+      placeholder: "Windows 11 24H2, NVIDIA RTX 4070"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: AirGlass version
+      description: Right-click AirGlass.exe → Properties → Details, or the installer name.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      options:
+        - Same router, PC on Ethernet
+        - Same router, PC on Wi-Fi
+        - Mesh Wi-Fi
+        - VPN on the PC or device
+        - Not sure
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        `%LOCALAPPDATA%\AirGlass\airglass.log` (tray icon → *Open log folder*). For more detail set `debuglog=1` under `[app]`
+        in `config.ini`, restart AirGlass and reproduce the problem. It contains device names and local IPs, so remove anything private first.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I read the Troubleshooting guide.
+          required: true
+        - label: I searched existing issues for this problem.
+          required: true

@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- README hero shot: real AirGlass renders (docs/images/window-*.png, captured with
+     AIRGLASS_DEBUG_SNAPSHOT_RAW) on a desktop-style backdrop. Rendered by tools/brand/render.ps1. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1600px; height: 900px; overflow: hidden; background: #0b0d18; }
+  .wall { position: absolute; inset: 0;
+    background:
+      radial-gradient(45% 60% at 18% 22%, #3846d6 0%, transparent 70%),
+      radial-gradient(40% 55% at 88% 30%, #8a34e6 0%, transparent 70%),
+      radial-gradient(50% 50% at 60% 105%, #0f8fb0 0%, transparent 70%),
+      linear-gradient(160deg, #141833, #090b14); }
+  .wall::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.45)); }
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: rgba(20, 22, 34, .72);
+    border-top: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(20px); }
+  .taskbar .icons { position: absolute; left: 50%; top: 9px; transform: translateX(-50%); display: flex; gap: 10px; }
+  .taskbar .icons i { width: 30px; height: 30px; border-radius: 7px; background: rgba(255,255,255,.14); }
+  .taskbar .icons i.ag { background: url(../../docs/images/icon.png) center/cover; }
+  .taskbar .tray { position: absolute; right: 18px; top: 14px; color: rgba(255,255,255,.85); font: 13px "Segoe UI"; }
+  img.land { position: absolute; left: 70px; top: 120px; width: 1010px; }
+  img.port { position: absolute; left: 1110px; top: 38px; width: 370px; }
+</style>
+</head>
+<body>
+  <div class="wall"></div>
+  <img class="land" src="../../docs/images/window-landscape.png" alt="">
+  <img class="port" src="../../docs/images/window-portrait.png" alt="">
+  <div class="taskbar"><div class="icons"><i></i><i></i><i></i><i class="ag"></i><i></i></div><div class="tray">9:41</div></div>
+</body>
+</html>

@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Fetch dependencies
+        run: ./tools/fetch-deps.ps1
+
+      - name: Install Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build installer and source zip
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          ./package.ps1 -Version $version
+
+      - name: Self-tests on the release build
+        run: |
+          $p = Start-Process build/AirGlass.exe -ArgumentList '--selftest' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { exit 1 }
+          ./build/airglass_test.exe resampler
+          python tools/bplist_check.py "$env:RUNNER_TEMP/bplist" build/airglass_test.exe
+
+      - name: Checksums
+        run: |
+          Get-ChildItem dist -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content dist/SHA256SUMS.txt -Encoding utf8
+          Get-Content dist/SHA256SUMS.txt
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          $lines = Get-Content CHANGELOG.md
+          $start = ($lines | Select-String "^## \[$([regex]::Escape($version))\]").LineNumber
+          $notes = @()
+          if ($start) {
+            foreach ($l in $lines[$start..($lines.Count - 1)]) { if ($l -match '^## \[') { break }; $notes += $l }
+          }
+          $notes += '', '---', '**Download:** `AirGlass-Setup-' + $version + '.exe` below. The source zip is included as the GPL requires.',
+            'Pro unlock: https://jdkuk.github.io/airglass/#pricing'
+          $notes -join "`n" | Set-Content "$env:RUNNER_TEMP/notes.md" -Encoding utf8
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ghArgs = @('release', 'create', $env:TAG, '--title', "AirGlass $($env:TAG.TrimStart('v'))",
+                      '--notes-file', "$env:RUNNER_TEMP/notes.md", '--generate-notes', '--verify-tag')
+          if ($env:TAG -match '-') { $ghArgs += '--prerelease' }
+          gh @ghArgs (Get-ChildItem dist -File).FullName

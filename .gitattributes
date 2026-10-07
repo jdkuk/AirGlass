@@ -1,0 +1,12 @@
+# Keep the files exactly as committed (LF); Windows tools here all handle LF.
+* -text
+
+# Language stats: count AirGlass's own code, not vendored or generated files.
+third_party/** linguist-vendored
+tools/brand/** linguist-documentation
+docs/** linguist-documentation
+*.hlsl linguist-language=HLSL
+
+# Binary assets
+*.png binary
+*.ico binary

@@ -13,9 +13,29 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-TC = glob.glob(os.path.join(ROOT, ".toolchain", "llvm-mingw-*", "bin"))[0]
-FFMPEG = glob.glob(os.path.join(ROOT, "third_party", "ffmpeg-*"))[0]
-FXC = os.path.join(os.environ["ProgramFiles(x86)"], r"Windows Kits\10\bin\10.0.22621.0\x64\fxc.exe")
+
+
+def find_one(pattern, hint):
+    found = sorted(glob.glob(os.path.join(ROOT, pattern)))
+    if not found:
+        sys.exit(f"{pattern} not found: {hint}")
+    return found[-1]
+
+
+TC = find_one(os.path.join(".toolchain", "llvm-mingw-*", "bin"), "run tools\\fetch-deps.ps1")
+FFMPEG = find_one(os.path.join("third_party", "ffmpeg-*"), "run tools\\fetch-deps.ps1")
+
+
+def find_fxc():
+    """Newest fxc.exe from any installed Windows 10/11 SDK."""
+    pattern = os.path.join(os.environ["ProgramFiles(x86)"], "Windows Kits", "10", "bin", "10.*", "x64", "fxc.exe")
+    found = glob.glob(pattern)
+    if not found:
+        sys.exit("fxc.exe not found: install the Windows 10/11 SDK")
+    return max(found, key=lambda p: tuple(int(x) for x in p.split(os.sep)[-3].split(".")))
+
+
+FXC = find_fxc()
 OUT = os.path.join(ROOT, "build")
 DEBUG = "--debug" in sys.argv
 PRO = "--pro" in sys.argv
