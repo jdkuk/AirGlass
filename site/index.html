@@ -118,7 +118,7 @@ header.hero { text-align: center; padding: 64px 0 28px; }
 h1 { font-size: clamp(42px, 7.2vw, 84px); line-height: 1.02; letter-spacing: -.045em; margin: 22px auto 18px; font-weight: 800; max-width: 920px; }
 h1 .grad { background: linear-gradient(115deg, #fff 15%, #c2c9ff 45%, #e2b6ff 75%, #9ee9ff); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: hue 10s ease-in-out infinite alternate; }
 @keyframes hue { to { background-position: 100% 0; } }
-.lede { font-size: clamp(17px, 2.1vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 30px; }
+.lede { text-wrap: balance; font-size: clamp(17px, 2.1vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 30px; }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; margin-top: 22px; color: var(--faint); font-size: 13.5px; }
 .trust span { display: inline-flex; align-items: center; gap: 7px; }
@@ -300,8 +300,8 @@ h1 .grad { background: linear-gradient(115deg, #fff 15%, #c2c9ff 45%, #e2b6ff 75
 /* ===== Sections ===================================================================== */
 section { padding: 88px 0; position: relative; }
 .eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #aab3ff; margin-bottom: 14px; }
-h2 { font-size: clamp(30px, 4.6vw, 52px); letter-spacing: -.035em; margin: 0 0 14px; line-height: 1.06; }
-.sub { color: var(--muted); margin: 0 0 40px; max-width: 640px; font-size: 18px; }
+h2 { text-wrap: balance; font-size: clamp(30px, 4.6vw, 52px); letter-spacing: -.035em; margin: 0 0 14px; line-height: 1.06; }
+.sub { text-wrap: pretty; color: var(--muted); margin: 0 0 40px; max-width: 640px; font-size: 18px; }
 .center { text-align: center; } .center .sub { margin-left: auto; margin-right: auto; }
 
 /* Stats */
@@ -508,9 +508,9 @@ footer a { color: var(--muted); }
 <main>
 <div class="hero-art" aria-hidden="true"></div>
 <header class="hero wrap">
-  <a class="pill" href="#lossless" data-reveal><b>New</b> Bit-perfect lossless AirPlay music on Windows →</a>
+  <a class="pill" href="#lossless" data-reveal><b>New</b> Bit-perfect AirPlay music, now on Windows →</a>
   <h1 data-reveal style="--i:1"><span class="grad">AirPlay to your PC.</span><br><span class="serif">Beautifully.</span></h1>
-  <p class="lede" data-reveal style="--i:2">Mirror your iPhone, iPad or Mac to Windows in a Liquid Glass window, and play AirPlay music in true lossless quality. No account, no setup, no bloat.</p>
+  <p class="lede" data-reveal style="--i:2">Mirror your iPhone, iPad or Mac to your PC in a floating pane of glass, and stream AirPlay music in true lossless. Install it, pick your PC, done.</p>
   <div class="cta" data-reveal style="--i:3">
     <a class="btn primary pulse" href="#download">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
@@ -522,10 +522,10 @@ footer a { color: var(--muted); }
     </a>
   </div>
   <div class="trust" data-reveal style="--i:4">
-    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Free to use</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Free to try</span>
     <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Windows 10 &amp; 11</span>
     <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Open source</span>
-    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Nothing leaves your network</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>No account needed</span>
   </div>
 </header>
 
@@ -612,7 +612,7 @@ footer a { color: var(--muted); }
     <button class="chip" data-step="3"><i>4</i><span>Lossless music</span></button>
   </div>
   <p class="caption" id="caption" aria-live="polite">&nbsp;</p>
-  <p class="note">Animated illustration of the real app. <a href="#frames">See actual AirGlass frames ↓</a></p>
+  <p class="note">An animated illustration. <a href="#frames">Prefer the real thing? See actual frames ↓</a></p>
 </div>
 
 <!-- ===== Stats ===== -->
@@ -620,9 +620,9 @@ footer a { color: var(--muted); }
   <div class="wrap">
     <div class="stats" data-reveal>
       <div><b data-count="60">0</b><span>fps mirroring</span></div>
-      <div><b data-count="120" data-suffix=" Hz">0</b><span>glass animations</span></div>
+      <div><b data-count="120" data-suffix=" Hz">0</b><span>silky animations</span></div>
       <div><b data-count="0" data-suffix="%">0</b><span>GPU when idle</span></div>
-      <div><b>1:1</b><span>bit-perfect ALAC</span></div>
+      <div><b>1:1</b><span>bit-perfect music</span></div>
     </div>
   </div>
 </section>
@@ -630,11 +630,11 @@ footer a { color: var(--muted); }
 <!-- ===== Playground ===== -->
 <section id="try" style="padding-top: 40px">
   <div class="wrap center">
-    <span class="eyebrow" data-reveal>Try it right here</span>
+    <span class="eyebrow" data-reveal>Try it, right here</span>
     <h2 data-reveal style="--i:1">Go on, <span class="serif">grab it.</span></h2>
-    <p class="sub" data-reveal style="--i:2">This is the AirGlass Pro window, running in your browser. Drag it around, resize it from a corner, scroll to zoom, double-click for full screen, or rotate it.</p>
+    <p class="sub" data-reveal style="--i:2">That's the actual AirGlass Pro window, running in your browser. Drag it around, stretch a corner, scroll to zoom, double-click for full screen.</p>
     <div class="desk" id="desk" data-reveal style="--i:3">
-      <div class="mastered">✓ You've got it. That's AirGlass Pro.</div>
+      <div class="mastered">✓ Nice. You've just used AirGlass Pro.</div>
       <div class="pw" id="pw" tabindex="0" aria-label="AirGlass window: drag to move, drag the corner to resize, scroll to zoom, double-click for full screen">
         <div class="pc">
           <video class="p" src="media/portrait.mp4" poster="media/portrait.jpg" muted loop playsinline preload="metadata"></video>
@@ -649,12 +649,12 @@ footer a { color: var(--muted); }
         <span class="grip" aria-hidden="true"></span>
       </div>
       <div class="hints" aria-hidden="true">
-        <span data-h="drag">Drag it</span><span data-h="resize">Resize the corner</span><span class="wheel" data-h="zoom">Scroll to zoom</span><span data-h="full">Double-click</span><span data-h="rotate">Rotate ⟳</span>
+        <span data-h="drag">Drag it</span><span data-h="resize">Stretch a corner</span><span class="wheel" data-h="zoom">Scroll to zoom</span><span data-h="full">Double-click</span><span data-h="rotate">Rotate ⟳</span>
       </div>
       <button class="btn primary again" id="again">Mirror again</button>
     </div>
     <p class="painting-credit">Wallpaper: Claude Monet, <em>The Houses of Parliament, Sunset</em>, 1903. National Gallery of Art, Washington, public domain.</p>
-    <div class="trycta" data-reveal>Like it? The floating window is AirGlass Pro. <a class="btn primary small" href="#pricing">Unlock for $2.99</a></div>
+    <div class="trycta" data-reveal>Like it? It's yours for $2.99, once. <a class="btn primary small" href="#pricing">Get AirGlass Pro</a></div>
   </div>
 </section>
 
@@ -671,15 +671,15 @@ footer a { color: var(--muted); }
 <section id="features">
   <div class="wrap">
     <span class="eyebrow" data-reveal>Features</span>
-    <h2 data-reveal style="--i:1">Feels like it came with Windows.</h2>
-    <p class="sub" data-reveal style="--i:2">A small native app, written for speed. It shows up as an AirPlay receiver for every Apple device on your network.</p>
+    <h2 data-reveal style="--i:1">Feels like it shipped with Windows.</h2>
+    <p class="sub" data-reveal style="--i:2">A native app built for speed. Every Apple device on your network sees your PC as an AirPlay receiver, with nothing to configure.</p>
     <div class="grid">
-      <div class="card" data-reveal><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4"/></svg></div><h3>Screen Mirroring</h3><p>Control Center → Screen Mirroring → your PC. The picture pops in within a blink and melts away when you stop.</p></div>
-      <div class="card" data-reveal style="--i:1"><div class="ico"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><h3>Lossless music</h3><p>AirPlay audio arrives as Apple Lossless and is decoded bit-for-bit, with a studio-grade resampler for your sound card.</p></div>
-      <div class="card" data-reveal style="--i:2"><div class="ico"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div><h3>Smooth</h3><p>Hardware video decoding, about 60 fps mirroring, and every animation at your display's refresh rate, up to 120 Hz.</p></div>
-      <div class="card" data-reveal><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M21 3 12 12"/></svg></div><h3>Rotation that flows</h3><p>Turn your phone and the glass window morphs between portrait and landscape instead of jumping.</p></div>
-      <div class="card" data-reveal style="--i:1"><div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></div><h3>Tiny &amp; clean</h3><p>No Bonjour install, no .NET, no browser engine, no adware. It sits quietly in the tray.</p></div>
-      <div class="card" data-reveal style="--i:2"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></svg></div><h3>Private</h3><p>Everything stays on your local network. No account, no analytics, no cloud.</p></div>
+      <div class="card" data-reveal><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4"/></svg></div><h3>Screen Mirroring</h3><p>Control Center, Screen Mirroring, your PC. The picture springs in within a blink and melts away when you're done.</p></div>
+      <div class="card" data-reveal style="--i:1"><div class="ico"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><h3>Lossless music</h3><p>AirPlay music arrives as Apple Lossless and plays bit-for-bit, through a studio-grade resampler.</p></div>
+      <div class="card" data-reveal style="--i:2"><div class="ico"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div><h3>Smooth</h3><p>Hardware video decoding and about 60 fps mirroring, with every animation running at your display's full refresh rate, up to 120 Hz.</p></div>
+      <div class="card" data-reveal><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M21 3 12 12"/></svg></div><h3>Rotation that flows</h3><p>Turn your phone sideways and the window morphs to match, with no jump cut and no black bars.</p></div>
+      <div class="card" data-reveal style="--i:1"><div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></div><h3>Light and tidy</h3><p>No Bonjour install, no .NET, no adware, no nagging updater. Just a quiet icon in your tray.</p></div>
+      <div class="card" data-reveal style="--i:2"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></svg></div><h3>Private</h3><p>Your screen and music never leave your home network. No account, no analytics, no cloud.</p></div>
     </div>
   </div>
 </section>
@@ -689,7 +689,7 @@ footer a { color: var(--muted); }
   <div class="wrap center">
     <span class="eyebrow" data-reveal>Not a mockup</span>
     <h2 data-reveal style="--i:1">Real frames, rendered live.</h2>
-    <p class="sub" data-reveal style="--i:2">Captured straight from AirGlass's GPU renderer: the refractive glass rim, the floating controls and the soft shadow are drawn every frame.</p>
+    <p class="sub" data-reveal style="--i:2">Captured straight from AirGlass's GPU renderer. The refracting rim, the floating controls and the soft shadow are drawn fresh, every single frame.</p>
     <div class="frames" data-reveal style="--i:3">
       <div class="frame" id="frame"><img src="media/desktop.jpg" srcset="media/desktop.jpg 1600w, media/desktop@2x.jpg 3200w" sizes="(max-width: 1160px) 100vw, 1128px" alt="AirGlass mirroring a Mac in landscape and an iPhone in portrait, in floating glass windows on a Windows desktop" loading="lazy" width="1600" height="900"></div>
     </div>
@@ -703,12 +703,12 @@ footer a { color: var(--muted); }
     <div>
       <span class="eyebrow" data-reveal>Sound</span>
       <h2 data-reveal style="--i:1">Every bit, <span class="serif">exactly</span> as sent.</h2>
-      <p class="sub" data-reveal style="--i:2; margin-bottom:0">Pick your PC from the AirPlay button in Music and AirGlass plays Apple Lossless at CD quality, verified bit-for-bit against the source in our test suite.</p>
+      <p class="sub" data-reveal style="--i:2; margin-bottom:0">Choose your PC from the AirPlay button in Music and AirGlass plays Apple Lossless at CD quality. Our test suite checks the output against the original, bit for bit.</p>
       <ul class="checks" data-reveal style="--i:3">
         <li>ALAC 16-bit / 44.1 kHz, decoded bit-exact</li>
         <li>One conversion only, with a 128-tap windowed-sinc filter (&gt;105 dB clean)</li>
-        <li>Lost Wi-Fi packets are re-requested, so drop-outs are rare</li>
-        <li>Play, pause and skip from the PC, with track info and artwork</li>
+        <li>Lost Wi-Fi packets are fetched again, so drop-outs are rare</li>
+        <li>Play, pause and skip from your PC, with track info and artwork</li>
       </ul>
     </div>
     <div class="card bitbox" data-reveal style="--i:2">
@@ -729,13 +729,13 @@ footer a { color: var(--muted); }
 <!-- ===== How it works ===== -->
 <section>
   <div class="wrap">
-    <span class="eyebrow" data-reveal>Setup</span>
+    <span class="eyebrow" data-reveal>Getting started</span>
     <h2 data-reveal style="--i:1">Up and running in a minute.</h2>
-    <p class="sub" data-reveal style="--i:2">No pairing, no codes. Your PC and Apple device just need to be on the same network.</p>
+    <p class="sub" data-reveal style="--i:2">No pairing codes, no accounts. Your PC and your Apple device just need to share a network.</p>
     <div class="steps">
-      <div class="card step" data-reveal><h3>Install AirGlass</h3><p>Run the installer. It lives in the tray and starts with Windows, ready whenever you are.</p></div>
-      <div class="card step" data-reveal style="--i:1"><h3>Pick your PC</h3><p>On your iPhone, iPad or Mac open Screen Mirroring, or the AirPlay button in Music, and choose your PC.</p></div>
-      <div class="card step" data-reveal style="--i:2"><h3>That's it</h3><p>Your screen floats onto the PC in glass. Music plays through your speakers in lossless quality.</p></div>
+      <div class="card step" data-reveal><h3>Install it</h3><p>Run the installer. AirGlass settles into your tray and starts with Windows, so it's always ready.</p></div>
+      <div class="card step" data-reveal style="--i:1"><h3>Pick your PC</h3><p>On your iPhone, iPad or Mac, open Screen Mirroring (or tap the AirPlay button in Music) and choose your PC.</p></div>
+      <div class="card step" data-reveal style="--i:2"><h3>Enjoy</h3><p>Your screen floats onto the PC in glass, and music plays through your speakers in lossless quality.</p></div>
     </div>
   </div>
 </section>
@@ -745,7 +745,7 @@ footer a { color: var(--muted); }
   <div class="wrap center">
     <span class="eyebrow" data-reveal>Pricing</span>
     <h2 data-reveal style="--i:1">Try it free. Unlock the glass for $2.99.</h2>
-    <p class="sub" data-reveal style="--i:2">The free edition mirrors full screen and plays lossless music, so you can check it works with your devices before you pay a penny.</p>
+    <p class="sub" data-reveal style="--i:2">The free edition mirrors full screen and plays lossless music, so you can make sure it works with your devices before paying anything.</p>
     <div class="pricing">
       <div class="card plan" data-reveal>
         <h3>Free</h3>
@@ -760,7 +760,7 @@ footer a { color: var(--muted); }
         <a class="btn" href="#download">Download free</a>
       </div>
       <div class="card plan pro" data-reveal style="--i:1">
-        <span class="ribbon">Full experience</span>
+        <span class="ribbon">The full glass</span>
         <h3>Pro</h3>
         <div class="price">$2.99 <small>one-time</small></div>
         <ul>
@@ -773,7 +773,7 @@ footer a { color: var(--muted); }
         <a class="btn primary" id="buy" href="https://airglass.lemonsqueezy.com/">Get AirGlass Pro</a>
       </div>
     </div>
-    <p class="fine">Prices in USD; local taxes are added at checkout. Payment is processed by Lemon Squeezy, our merchant of record. Your license key arrives by email: paste it into AirGlass (tray icon → <em>Unlock windowed mode</em>).</p>
+    <p class="fine">Prices in USD. Local taxes are added at checkout by Lemon Squeezy, our payment partner. Your license key arrives by email: paste it into AirGlass from the tray icon (<em>Unlock windowed mode</em>).</p>
   </div>
 </section>
 
@@ -782,13 +782,13 @@ footer a { color: var(--muted); }
   <div class="wrap">
     <div class="card dl" data-reveal>
       <img src="icon.png" alt="" width="84" height="84">
-      <h2 style="margin-top:22px">Get AirGlass</h2>
-      <p class="sub" style="margin: 0 auto 26px">Windows 10 or 11, 64-bit. The free edition is included, and Pro unlocks with a key.</p>
+      <h2 style="margin-top:22px">Ready when you are.</h2>
+      <p class="sub" style="margin: 0 auto 26px">One download for Windows 10 and 11 (64-bit). Start free, and unlock Pro with a key whenever you like.</p>
       <a class="btn primary pulse" href="https://github.com/jdkuk/AirGlass/releases/latest">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
         Download for Windows
       </a>
-      <p class="fine">Open source (GPL-3.0) · <a href="https://github.com/jdkuk/AirGlass">view the code</a> · every release is built by GitHub Actions</p>
+      <p class="fine">Open source (GPL-3.0) · <a href="https://github.com/jdkuk/AirGlass">read the code</a> · every release is built in public by GitHub Actions</p>
     </div>
   </div>
 </section>
@@ -796,14 +796,14 @@ footer a { color: var(--muted); }
 <!-- ===== FAQ ===== -->
 <section id="faq">
   <div class="wrap">
-    <h2 class="center" data-reveal>Questions</h2>
+    <h2 class="center" data-reveal>Good <span class="serif">questions</span></h2>
     <div class="faq" data-reveal style="--i:1">
-      <details><summary>Does my PC need to be on the same Wi-Fi?</summary><p>It needs to be on the same network as your Apple device. Wi-Fi and Ethernet on the same router is fine. Guest networks and routers with "client isolation" block AirPlay.</p></details>
-      <details><summary>Which devices work?</summary><p>iPhone, iPad and Mac with Screen Mirroring, plus any app that plays AirPlay audio (Music, Spotify, podcasts and so on).</p></details>
-      <details><summary>Does it mirror in 4K?</summary><p>AirGlass asks your device for 1080p. Phones can't mirror 4K landscape smoothly (they drop to about 28 fps), while 1080p runs at about 60 fps. Full screen is upscaled with a high-quality filter.</p></details>
-      <details><summary>Can I AirPlay a YouTube or Netflix video?</summary><p>Use Screen Mirroring. AirGlass doesn't support the "send a video link" kind of AirPlay, and protected video (Netflix and similar) shows black when mirrored, by design of those apps.</p></details>
-      <details><summary>Is there a subscription?</summary><p>No. Pro is a one-time $2.99 that you can use on up to 3 of your PCs.</p></details>
-      <details><summary>Windows warns me about the installer. Is it safe?</summary><p>New apps from small developers can trigger a SmartScreen warning until they build up reputation. Click <em>More info → Run anyway</em>. The code is public, and every release is built by GitHub Actions from a tagged commit.</p></details>
+      <details><summary>Does my PC need to be on the same Wi-Fi?</summary><p>Same network, yes; same connection type, no. A phone on Wi-Fi and a PC on Ethernet work fine through the same router. Guest networks and routers with "client isolation" block AirPlay.</p></details>
+      <details><summary>Which devices work?</summary><p>Any iPhone, iPad or Mac with Screen Mirroring, plus any app that plays AirPlay audio: Music, Spotify, podcasts and more.</p></details>
+      <details><summary>Does it mirror in 4K?</summary><p>AirGlass asks for 1080p on purpose. Phones asked for 4K landscape drop to about 28 fps, while 1080p stays at a smooth 60. Full screen is upscaled with a high-quality filter.</p></details>
+      <details><summary>Can I AirPlay a YouTube or Netflix video?</summary><p>Use Screen Mirroring for anything on your screen. AirGlass doesn't support the "send a video link" kind of AirPlay, and protected video (Netflix and similar) mirrors as black. That's the apps' choice, not ours.</p></details>
+      <details><summary>Is there a subscription?</summary><p>No. Pro is $2.99, once, and covers up to 3 of your PCs.</p></details>
+      <details><summary>Windows warns me about the installer. Is it safe?</summary><p>Windows is cautious about new apps from small developers until they build up a reputation. Click <em>More info</em>, then <em>Run anyway</em>. The code is public, and every release is built in the open by GitHub Actions.</p></details>
     </div>
   </div>
 </section>
@@ -834,7 +834,7 @@ footer a { color: var(--muted); }
 </footer>
 
 <div class="sticky" id="sticky" role="complementary" aria-label="Download AirGlass">
-  <img src="icon.png" alt=""><span class="txt">AirGlass is free to try on Windows</span>
+  <img src="icon.png" alt=""><span class="txt">AirPlay for Windows, free to try</span>
   <a class="btn small primary" href="#download">Download free</a>
   <button class="x" id="stickyx" aria-label="Dismiss">×</button>
 </div>
@@ -1083,16 +1083,16 @@ footer a { color: var(--muted); }
   // Each scene: classes on the stage, duration (ms), demo step and caption.
   const S = (cls, ms, step, text) => ({ cls, ms, step, text });
   const scenes = [
-    S([], 900, 0, 'Open Control Center on your iPhone…'),
-    S(['cc'], 900, 0, 'Open Control Center on your iPhone…'),
+    S([], 900, 0, 'Swipe down for Control Center…'),
+    S(['cc'], 900, 0, 'Swipe down for Control Center…'),
     S(['cc', 'tapTile'], 700, 0, '…tap Screen Mirroring…'),
-    S(['cc', 'list'], 900, 0, '…and choose your PC.'),
-    S(['cc', 'list', 'tapRow'], 900, 0, '…and choose your PC.'),
-    S(['win', 'tray'], 1100, 1, 'A glass window springs in on your PC.'),
-    S(['win', 'live'], 1900, 1, 'Your screen resolves out of a blur, live at about 60 fps.'),
-    S(['win', 'live', 'hover'], 2000, 1, 'Hover for glass controls: close, keep on top, full screen.'),
-    S(['win', 'live', 'land'], 3400, 2, 'Rotate the phone and the window morphs to landscape.'),
-    S(['music', 'tray'], 4600, 3, 'Or send music: Apple Lossless, bit-perfect, with track info.'),
+    S(['cc', 'list'], 900, 0, '…and pick your PC.'),
+    S(['cc', 'list', 'tapRow'], 900, 0, '…and pick your PC.'),
+    S(['win', 'tray'], 1100, 1, 'A pane of glass springs onto your desktop.'),
+    S(['win', 'live'], 1900, 1, 'Your screen comes into focus, live and smooth.'),
+    S(['win', 'live', 'hover'], 2000, 1, 'Hover for controls: close, keep on top, full screen.'),
+    S(['win', 'live', 'land'], 3400, 2, 'Turn your phone, and the glass turns with it.'),
+    S(['music', 'tray'], 4600, 3, 'Or just send music: lossless, bit-perfect, beautifully shown.'),
   ];
   const stepStart = [0, 5, 8, 9];
   const stepDur = [0, 1, 2, 3].map(s => scenes.filter(x => x.step === s).reduce((a, x) => a + x.ms, 0));
