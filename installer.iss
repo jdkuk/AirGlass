@@ -5,6 +5,13 @@
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
+; File version info must be numeric: "1.3.0-beta.1" -> "1.3.0".
+#define Dash Pos("-", AppVersion)
+#if Dash > 0
+  #define NumVersion Copy(AppVersion, 1, Dash - 1)
+#else
+  #define NumVersion AppVersion
+#endif
 #define AppName "AirGlass"
 #define AppExe "AirGlass.exe"
 #define RuleName "AirGlass (AirPlay receiver)"
@@ -15,7 +22,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=AirGlass
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#NumVersion}
 DefaultDirName={localappdata}\Programs\{#AppName}
 DisableDirPage=yes
 DisableProgramGroupPage=yes

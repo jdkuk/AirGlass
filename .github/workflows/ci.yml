@@ -71,7 +71,6 @@ jobs:
 
       - name: Loopback end-to-end (mirroring + lossless music)
         # Hosted runners have no GPU; the receiver uses the basic render driver and stays hidden.
-        continue-on-error: true
         timeout-minutes: 6
         run: |
           $env:AIRGLASS_DEBUG_SNAPSHOT = "$env:RUNNER_TEMP/snaps"
