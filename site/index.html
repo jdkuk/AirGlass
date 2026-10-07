@@ -4,239 +4,638 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AirGlass — AirPlay receiver for Windows</title>
-<meta name="description" content="Mirror your iPhone, iPad or Mac to a Windows PC and play AirPlay music in true lossless quality. Free to try; Pro unlocks the floating glass window for $2.99.">
+<meta name="description" content="Mirror your iPhone, iPad or Mac to a Windows PC in a Liquid Glass window, and play AirPlay music in bit-perfect lossless quality. Free to try; Pro unlocks the floating window for $2.99.">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080d">
 <link rel="icon" href="icon.png">
 <meta property="og:title" content="AirGlass — AirPlay receiver for Windows">
-<meta property="og:description" content="Screen Mirroring and lossless AirPlay music on Windows, in a Liquid Glass window.">
+<meta property="og:description" content="Screen Mirroring and bit-perfect lossless AirPlay music on Windows, in a Liquid Glass window.">
 <meta property="og:image" content="https://jdkuk.github.io/AirGlass/og.png">
+<meta property="og:url" content="https://jdkuk.github.io/AirGlass/">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
-  :root {
-    --bg: #07080d;
-    --ink: #f3f5fb;
-    --muted: #a3a9bd;
-    --faint: #6d738a;
-    --glass: rgba(255, 255, 255, 0.06);
-    --glass-strong: rgba(255, 255, 255, 0.10);
-    --rim: rgba(255, 255, 255, 0.14);
-    --accent: #7c8cff;
-    --accent-2: #b46cff;
-    --good: #5ee0a0;
-    --radius: 22px;
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-    -webkit-font-smoothing: antialiased; overflow-x: hidden;
-  }
-  a { color: inherit; }
-  .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-  .aurora i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; animation: drift 22s ease-in-out infinite alternate; }
-  .aurora i:nth-child(1) { width: 620px; height: 620px; left: -120px; top: -160px; background: #3f4dff; }
-  .aurora i:nth-child(2) { width: 520px; height: 520px; right: -140px; top: 120px; background: #9b3cff; animation-delay: -7s; }
-  .aurora i:nth-child(3) { width: 480px; height: 480px; left: 30%; top: 70vh; background: #00a6c8; opacity: .3; animation-delay: -13s; }
-  @keyframes drift { to { transform: translate(60px, 40px) scale(1.12); } }
-  @media (prefers-reduced-motion: reduce) { .aurora i { animation: none; } }
+/* ===== Tokens ===================================================================== */
+:root {
+  --bg: #06070c;
+  --bg-2: #0b0d16;
+  --ink: #f4f6fc;
+  --muted: #a6acc2;
+  --faint: #6c7290;
+  --line: rgba(255,255,255,.08);
+  --glass: rgba(255,255,255,.055);
+  --glass-2: rgba(255,255,255,.09);
+  --rim: rgba(255,255,255,.14);
+  --accent: #7d8bff;
+  --accent-2: #b46cff;
+  --cyan: #3fd0f0;
+  --good: #5fe3a1;
+  --radius: 22px;
+  --spring: cubic-bezier(.34, 1.4, .64, 1);
+  --ease: cubic-bezier(.22, .8, .24, 1);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { color: inherit; }
+img, video { display: block; max-width: 100%; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 16px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
-  nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; text-decoration: none; }
-  .brand img { width: 32px; height: 32px; border-radius: 8px; }
-  .navlinks { display: flex; gap: 22px; align-items: center; font-size: 15px; color: var(--muted); }
-  .navlinks a { text-decoration: none; }
-  .navlinks a:hover { color: var(--ink); }
-  @media (max-width: 640px) { .navlinks a.hide-sm { display: none; } }
+/* ===== Ambient background =========================================================== */
+.aurora { position: fixed; inset: 0; z-index: -2; pointer-events: none; overflow: hidden; }
+.aurora i { position: absolute; border-radius: 50%; filter: blur(110px); opacity: .5; will-change: transform; animation: drift 26s ease-in-out infinite alternate; }
+.aurora i:nth-child(1) { width: 52vw; height: 52vw; left: -14vw; top: -18vw; background: #3443ff; }
+.aurora i:nth-child(2) { width: 44vw; height: 44vw; right: -16vw; top: 6vw; background: #8f35ff; animation-delay: -9s; }
+.aurora i:nth-child(3) { width: 40vw; height: 40vw; left: 28vw; top: 70vh; background: #0aa3c4; opacity: .22; animation-delay: -17s; }
+@keyframes drift { to { transform: translate(4vw, 3vw) scale(1.12); } }
+.grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .05;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
 
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 999px;
-    font-weight: 600; text-decoration: none; border: 1px solid var(--rim); background: var(--glass-strong);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: transform .15s, background .15s;
-  }
-  .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,.16); }
-  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; color: #fff; box-shadow: 0 10px 30px -10px rgba(124,140,255,.7); }
-  .btn.small { padding: 8px 14px; font-size: 14px; }
+/* ===== Nav ========================================================================== */
+nav.top { position: sticky; top: 0; z-index: 50; transition: background .3s, border-color .3s, backdrop-filter .3s; border-bottom: 1px solid transparent; }
+nav.top.scrolled { background: rgba(8,9,15,.62); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); border-bottom-color: var(--line); }
+nav.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; text-decoration: none; letter-spacing: -.01em; }
+.brand img { width: 30px; height: 30px; border-radius: 8px; box-shadow: 0 6px 18px -6px rgba(125,139,255,.8); }
+.navlinks { display: flex; gap: 26px; align-items: center; font-size: 15px; color: var(--muted); }
+.navlinks a { text-decoration: none; transition: color .2s; }
+.navlinks a:hover { color: var(--ink); }
+@media (max-width: 720px) { .navlinks .hide-sm { display: none; } }
 
-  header.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 56px 0 80px; }
-  @media (max-width: 900px) { header.hero { grid-template-columns: 1fr; padding-top: 24px; } }
-  header.hero > *, .grid > *, .steps > *, .pricing > *, .legal > * { min-width: 0; }
-  .eyebrow { display: inline-block; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: #c9cffc; padding: 6px 12px; border-radius: 999px; background: var(--glass); border: 1px solid var(--rim); }
-  h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.04; letter-spacing: -0.03em; margin: 18px 0 18px; font-weight: 800; }
-  h1 .grad { background: linear-gradient(120deg, #fff 10%, #b9c1ff 45%, #e0b3ff 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .lede { font-size: 19px; color: var(--muted); max-width: 520px; margin: 0 0 28px; }
-  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
-  .fine { color: var(--faint); font-size: 13px; margin-top: 14px; }
+/* ===== Buttons ====================================================================== */
+.btn {
+  --h: 46px; position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  height: var(--h); padding: 0 22px; border-radius: 999px; font-weight: 600; font-size: 15.5px; text-decoration: none;
+  border: 1px solid var(--rim); background: var(--glass-2); color: var(--ink); cursor: pointer; isolation: isolate;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); overflow: hidden;
+  transition: transform .25s var(--spring), background .25s, box-shadow .25s, border-color .25s;
+}
+.btn:hover { transform: translateY(-2px); background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.24); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn.small { --h: 36px; padding: 0 15px; font-size: 14px; }
+.btn.primary { border-color: transparent; color: #fff; background: linear-gradient(135deg, #6f7fff, #a35dff 60%, #c070ff); box-shadow: 0 12px 34px -12px rgba(125,139,255,.9), inset 0 1px 0 rgba(255,255,255,.35); }
+.btn.primary:hover { box-shadow: 0 18px 44px -12px rgba(150,120,255,1), inset 0 1px 0 rgba(255,255,255,.4); }
+.btn.primary::after { /* sheen */
+  content: ""; position: absolute; inset: 0; z-index: -1; transform: translateX(-120%) skewX(-20deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); transition: transform .8s var(--ease);
+}
+.btn.primary:hover::after { transform: translateX(120%) skewX(-20deg); }
+.pulse { position: relative; }
+.pulse::before { /* nudge: a soft ring every few seconds */
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; border: 2px solid rgba(160,140,255,.7);
+  animation: ring 4.5s var(--ease) infinite 1.5s; pointer-events: none; z-index: 1;
+}
+@keyframes ring { 0% { transform: scale(1); opacity: .9; } 22% { transform: scale(1.18, 1.45); opacity: 0; } 100% { opacity: 0; } }
 
-  /* Glass window mockup */
-  .stage { position: relative; aspect-ratio: 16 / 11; }
-  .desk { position: absolute; inset: 0; border-radius: 26px; background: linear-gradient(160deg, #1a1d2e, #0d0f18); border: 1px solid rgba(255,255,255,.07); overflow: hidden; }
-  .desk::after { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 50% at 30% 20%, rgba(124,140,255,.25), transparent 70%), radial-gradient(50% 50% at 80% 80%, rgba(180,108,255,.22), transparent 70%); }
-  .slab {
-    position: absolute; left: 50%; top: 50%; width: 34%; aspect-ratio: 0.4613; transform: translate(-50%, -50%) rotate(-2deg);
-    border-radius: 18% / 8.3%; padding: 3.5%; background: rgba(255,255,255,.10);
-    border: 1px solid rgba(255,255,255,.35); box-shadow: 0 30px 70px -20px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.5);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: float 6s ease-in-out infinite;
-  }
-  @keyframes float { 50% { transform: translate(-50%, -53%) rotate(-1deg); } }
-  @media (prefers-reduced-motion: reduce) { .slab { animation: none; } }
-  .screen { width: 100%; height: 100%; border-radius: 15% / 7%; overflow: hidden; position: relative;
-    background: linear-gradient(170deg, #ff9a6b 0%, #ff5fa2 35%, #7a5cff 70%, #2a2f8f 100%); }
-  .screen .time { position: absolute; top: 19%; width: 100%; text-align: center; font-weight: 300; font-size: clamp(22px, 3.4vw, 40px); color: rgba(255,255,255,.95); letter-spacing: -.02em; }
-  .screen .date { position: absolute; top: 15%; width: 100%; text-align: center; font-size: clamp(8px, .9vw, 11px); color: rgba(255,255,255,.85); font-weight: 600; }
-  .screen .np { position: absolute; left: 7%; right: 7%; bottom: 8%; height: 17%; border-radius: 14px; background: rgba(255,255,255,.22); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.3); }
-  .screen .np::before { content: ""; position: absolute; left: 7%; top: 18%; height: 64%; aspect-ratio: 1; border-radius: 8px; background: linear-gradient(135deg, #ffd36b, #ff6b9a); }
-  .capsule { position: absolute; left: 50%; top: 6%; transform: translateX(-50%); display: flex; gap: 10px; padding: 7px 12px; border-radius: 999px;
-    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-size: 12px; color: #fff; }
-  .capsule span { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.12); }
-  .badge-float { position: absolute; right: 4%; bottom: 7%; padding: 10px 14px; border-radius: 14px; font-size: 13px; background: rgba(10,12,20,.6); border: 1px solid var(--rim); backdrop-filter: blur(12px); }
-  .badge-float b { color: var(--good); }
+/* ===== Hero ========================================================================= */
+header.hero { text-align: center; padding: 64px 0 28px; }
+.pill {
+  position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 999px;
+  background: var(--glass); border: 1px solid var(--rim); font-size: 13.5px; color: #cdd2f6; text-decoration: none; overflow: hidden;
+}
+.pill b { padding: 3px 9px; border-radius: 999px; font-size: 12px; background: linear-gradient(135deg, #6f7fff, #b46cff); color: #fff; }
+.pill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.18) 50%, transparent 70%); transform: translateX(-100%); animation: shimmer 5s ease-in-out infinite 2s; }
+@keyframes shimmer { 0%, 60% { transform: translateX(-100%); } 85%, 100% { transform: translateX(100%); } }
+h1 { font-size: clamp(42px, 7.2vw, 84px); line-height: 1.02; letter-spacing: -.045em; margin: 22px auto 18px; font-weight: 800; max-width: 920px; }
+h1 .grad { background: linear-gradient(115deg, #fff 15%, #c2c9ff 45%, #e2b6ff 75%, #9ee9ff); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: hue 10s ease-in-out infinite alternate; }
+@keyframes hue { to { background-position: 100% 0; } }
+.lede { font-size: clamp(17px, 2.1vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 30px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; margin-top: 22px; color: var(--faint); font-size: 13.5px; }
+.trust span { display: inline-flex; align-items: center; gap: 7px; }
+.trust svg { width: 15px; height: 15px; stroke: var(--good); }
 
-  section { padding: 72px 0; }
-  h2 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -0.02em; margin: 0 0 12px; line-height: 1.15; }
-  .sub { color: var(--muted); margin: 0 0 36px; max-width: 640px; font-size: 17px; }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--glass); border: 1px solid var(--rim); border-radius: var(--radius); padding: 24px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-  .card h3 { margin: 12px 0 6px; font-size: 18px; }
-  .card p { margin: 0; color: var(--muted); font-size: 15px; }
-  .ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(135deg, rgba(124,140,255,.35), rgba(180,108,255,.35)); border: 1px solid var(--rim); }
-  .ico svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* ===== Demo stage =================================================================== */
+.demo { padding: 26px 0 40px; }
+.stage {
+  container-type: inline-size; position: relative; width: 100%; max-width: 1080px; margin: 0 auto; aspect-ratio: 16 / 10;
+}
+/* Monitor */
+.monitor { position: absolute; left: 15%; right: 0; top: 0; height: 87%; border-radius: 1.6cqw; padding: .9cqw;
+  background: linear-gradient(180deg, #23262f, #14161c); box-shadow: 0 4cqw 8cqw -3cqw rgba(0,0,0,.85), inset 0 0 0 1px rgba(255,255,255,.07), inset 0 1px 0 rgba(255,255,255,.12); }
+.stand { position: absolute; left: calc(15% + 42.5% - 6%); width: 12%; top: 87%; height: 9%;
+  background: linear-gradient(180deg, #191b22, #2a2d36); clip-path: polygon(22% 0, 78% 0, 88% 100%, 12% 100%); }
+.stand::after { content: ""; position: absolute; left: -45%; right: -45%; bottom: -1.2cqw; height: 1.4cqw; border-radius: 1cqw; background: linear-gradient(180deg, #2b2e37, #15171d); box-shadow: 0 1cqw 2cqw -0.5cqw rgba(0,0,0,.8); }
+.screen { position: relative; width: 100%; height: 100%; border-radius: .9cqw; overflow: hidden;
+  background:
+    radial-gradient(48% 62% at 16% 20%, #3a49e0 0%, transparent 70%),
+    radial-gradient(44% 58% at 90% 28%, #8b36e8 0%, transparent 70%),
+    radial-gradient(52% 50% at 58% 108%, #0f8fb0 0%, transparent 70%),
+    linear-gradient(160deg, #161a38, #090b14); }
+.screen::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.4)); }
+.screen::after { /* glass reflection on the panel */
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 30;
+  background: linear-gradient(115deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,0) 30%, rgba(255,255,255,0) 70%, rgba(255,255,255,.03)); }
+.taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 6.4%; z-index: 20; background: rgba(18,20,32,.72);
+  border-top: 1px solid rgba(255,255,255,.07); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.taskbar .apps { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; gap: .7cqw; }
+.taskbar .apps i { display: block; width: 2.2cqw; height: 2.2cqw; border-radius: .5cqw; background: rgba(255,255,255,.13); }
+.taskbar .apps i:nth-child(1) { background: linear-gradient(135deg, #4aa3ff, #1e6fe0); }
+.taskbar .tray { position: absolute; right: 1.2cqw; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: .9cqw; color: rgba(255,255,255,.88); font-size: 1.05cqw; font-weight: 500; }
+.trayicon { position: relative; width: 1.7cqw; height: 1.7cqw; border-radius: .4cqw; background: url(icon.png) center/cover; }
+.trayicon::after { content: ""; position: absolute; inset: -.35cqw; border-radius: .6cqw; border: .16cqw solid rgba(170,150,255,.9); opacity: 0; }
+.tray-on .trayicon::after { animation: trayping 1.4s var(--ease) infinite; }
+@keyframes trayping { 0% { transform: scale(.8); opacity: .9; } 100% { transform: scale(1.8); opacity: 0; } }
 
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: s; }
-  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
-  .step { counter-increment: s; }
-  .step::before { content: counter(s); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font-weight: 700; background: var(--glass-strong); border: 1px solid var(--rim); }
+/* Glass window */
+.win { position: absolute; z-index: 10; left: 52%; top: 7%; width: 22.4%; height: 80%; border-radius: 2.1cqw; opacity: 0;
+  transform: translateY(1.6cqw) scale(.9); filter: blur(5px);
+  background: linear-gradient(145deg, rgba(255,255,255,.42), rgba(255,255,255,.07) 38%, rgba(255,255,255,.04) 62%, rgba(255,255,255,.22));
+  box-shadow: 0 2.6cqw 5cqw -1.6cqw rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.3) inset, 0 1px 0 rgba(255,255,255,.75) inset, 0 -1px 0 rgba(255,255,255,.12) inset;
+  backdrop-filter: blur(14px) saturate(1.7); -webkit-backdrop-filter: blur(14px) saturate(1.7);
+  transition: left .85s var(--spring), top .85s var(--spring), width .85s var(--spring), height .85s var(--spring), border-radius .85s var(--spring),
+              opacity .55s var(--ease), transform .7s var(--spring), filter .6s var(--ease); }
+.win::after { /* specular rim lit from the top-left */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3;
+  background: radial-gradient(60% 40% at 18% 0%, rgba(255,255,255,.5), transparent 60%), radial-gradient(40% 30% at 100% 100%, rgba(255,255,255,.18), transparent 60%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; padding: .55cqw; }
+.win .content { position: absolute; inset: .55cqw; border-radius: 1.6cqw; overflow: hidden; background: #0d0f1c; transition: border-radius .85s var(--spring); }
+.win video, .win .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.win video { opacity: 0; filter: blur(14px) saturate(1.3); transform: scale(1.06); transition: opacity .5s, filter .8s var(--ease), transform .9s var(--ease); }
+.ph { display: grid; place-items: center; align-content: center; gap: 1.2cqw; color: rgba(255,255,255,.9); font-size: 1.15cqw; font-weight: 500; transition: opacity .5s; }
+.ph::before { content: ""; position: absolute; inset: -30%;
+  background: radial-gradient(30% 30% at 30% 30%, #5865ff, transparent 70%), radial-gradient(30% 30% at 70% 60%, #b04dff, transparent 70%), radial-gradient(35% 35% at 40% 80%, #19b6d6, transparent 70%);
+  filter: blur(2cqw); animation: auroraSpin 6s linear infinite; }
+@keyframes auroraSpin { to { transform: rotate(360deg); } }
+.ph svg, .ph span { position: relative; }
+.ph svg { width: 3.4cqw; height: 3.4cqw; animation: glyph 1.6s ease-in-out infinite; }
+@keyframes glyph { 50% { transform: scale(1.12); opacity: .7; } }
+.ph em { font-style: normal; opacity: .7; }
+/* states */
+.s-win .win { opacity: 1; transform: none; filter: none; }
+.s-live .win video.port { opacity: 1; filter: none; transform: none; }
+.s-live .ph { opacity: 0; }
+.s-land .win { left: 21%; top: 13%; width: 60%; height: 59.5%; border-radius: 1.6cqw; }
+.s-land .win .content { border-radius: 1.15cqw; }
+.s-land .win video.port { opacity: 0; }
+.s-land .win video.land { opacity: 1; filter: none; transform: none; transition-delay: .25s; }
+.s-music .win { opacity: 0; transform: scale(.94); filter: blur(10px); }
 
-  .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 820px; }
-  @media (max-width: 700px) { .pricing { grid-template-columns: 1fr; } }
-  .plan { display: flex; flex-direction: column; }
-  .plan.pro { background: linear-gradient(160deg, rgba(124,140,255,.16), rgba(180,108,255,.12)); border-color: rgba(160,150,255,.45); }
-  .price { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 2px; }
-  .price small { font-size: 15px; font-weight: 500; color: var(--muted); }
-  .plan ul { list-style: none; padding: 0; margin: 18px 0 24px; flex: 1; }
-  .plan li { padding: 7px 0 7px 28px; position: relative; color: #dfe3f2; font-size: 15px; }
-  .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--good); font-weight: 700; }
-  .plan li.no { color: var(--faint); }
-  .plan li.no::before { content: "–"; color: var(--faint); }
+/* Control capsule */
+.cap { position: absolute; z-index: 5; left: 50%; top: 3.2%; display: flex; gap: .55cqw; padding: .45cqw .6cqw; border-radius: 999px;
+  transform: translate(-50%, -.8cqw) scale(.9); opacity: 0;
+  background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.42); box-shadow: 0 .8cqw 1.8cqw -.6cqw rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.6);
+  backdrop-filter: blur(12px) saturate(1.6); -webkit-backdrop-filter: blur(12px) saturate(1.6);
+  transition: opacity .35s var(--ease), transform .5s var(--spring); }
+.cap i { position: relative; z-index: 1; display: grid; place-items: center; width: 2.1cqw; height: 2.1cqw; border-radius: 50%; }
+.cap svg { width: 1.05cqw; height: 1.05cqw; stroke: #fff; stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.cap .drop { position: absolute; z-index: 0; top: .45cqw; left: .6cqw; width: 2.1cqw; height: 2.1cqw; border-radius: 50%; background: rgba(255,255,255,.38);
+  box-shadow: 0 0 1cqw rgba(255,255,255,.4); transform: translateX(calc(2 * 2.65cqw)); transition: transform .45s var(--spring); }
+.s-hover .cap { opacity: 1; transform: translate(-50%, 0) scale(1); }
 
-  details { border-bottom: 1px solid rgba(255,255,255,.08); padding: 16px 0; max-width: 820px; }
-  summary { cursor: pointer; font-weight: 600; font-size: 17px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
-  summary::after { content: "+"; color: var(--muted); font-weight: 400; }
-  details[open] summary::after { content: "–"; }
-  details p { color: var(--muted); margin: 10px 0 0; }
+/* Now Playing card (music) */
+.np { position: absolute; z-index: 12; right: 2.2%; bottom: 9%; width: 36%; padding: 1.2cqw; border-radius: 1.4cqw; display: grid; grid-template-columns: 7.4cqw 1fr; gap: 1.2cqw; align-items: center;
+  background: rgba(22,24,40,.55); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 2cqw 4cqw -1.5cqw rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.18);
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  opacity: 0; transform: translateY(2cqw) scale(.96); transition: opacity .5s var(--ease), transform .7s var(--spring); }
+.s-music .np { opacity: 1; transform: none; transition-delay: .35s; }
+.art { position: relative; aspect-ratio: 1; border-radius: .8cqw; overflow: hidden; background: linear-gradient(135deg, #ffd27a, #ff7aa8 55%, #8a6bff); box-shadow: 0 .8cqw 1.6cqw -.6cqw rgba(0,0,0,.7); }
+.art::after { content: ""; position: absolute; inset: -40%; background: conic-gradient(from 0deg, transparent, rgba(255,255,255,.35), transparent 30%); animation: auroraSpin 7s linear infinite; mix-blend-mode: soft-light; }
+.np .t { font-size: 1.35cqw; font-weight: 700; line-height: 1.2; }
+.np .a { font-size: 1.05cqw; color: rgba(255,255,255,.7); margin-top: .2cqw; }
+.badges { display: flex; flex-wrap: wrap; gap: .45cqw; margin-top: .7cqw; }
+.badges b { font-size: .82cqw; font-weight: 600; padding: .22cqw .6cqw; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14); }
+.badges b.ok { color: var(--good); border-color: rgba(95,227,161,.4); background: rgba(95,227,161,.1); }
+.prog { grid-column: 1 / -1; height: .32cqw; border-radius: 1cqw; background: rgba(255,255,255,.14); overflow: hidden; }
+.prog i { display: block; height: 100%; width: 18%; border-radius: inherit; background: linear-gradient(90deg, #fff, #d9dcff); }
+.s-music .prog i { animation: prog 6s linear forwards .5s; }
+@keyframes prog { to { width: 46%; } }
+.meters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(28, 1fr); gap: .22cqw; height: 2.4cqw; align-items: end; }
+.meters i { display: block; height: 30%; border-radius: .2cqw; background: linear-gradient(180deg, #9ee9ff, #7d8bff 60%, #b46cff); opacity: .9; transform-origin: bottom; }
+.s-music .meters i { animation: eq var(--d, .9s) ease-in-out infinite alternate; }
+@keyframes eq { 0% { height: 18%; } 100% { height: var(--h, 90%); } }
 
-  .legal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  @media (max-width: 900px) { .legal { grid-template-columns: 1fr; } }
-  .legal h3 { margin-top: 0; }
-  .legal p, .legal li { color: var(--muted); font-size: 14px; }
-  .legal ul { padding-left: 18px; margin: 8px 0 0; }
+/* Cursor */
+.cursor { position: absolute; z-index: 25; width: 1.9cqw; left: 92%; top: 80%; opacity: 0; transition: left 1s var(--ease), top 1s var(--ease), opacity .4s; filter: drop-shadow(0 .3cqw .4cqw rgba(0,0,0,.5)); }
+.s-hover .cursor { left: 66.2%; top: 10.2%; opacity: 1; }
 
-  footer { padding: 40px 0 60px; color: var(--faint); font-size: 13px; border-top: 1px solid rgba(255,255,255,.06); }
-  footer .row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+/* Phone */
+.phone { position: absolute; z-index: 40; left: 1.5%; bottom: 1%; height: 68%; aspect-ratio: .488; border-radius: 4.4cqw; padding: .75cqw;
+  background: linear-gradient(145deg, #3b3e48, #15161b 45%, #2c2f38); box-shadow: 0 3cqw 6cqw -2cqw rgba(0,0,0,.9), inset 0 0 0 .2cqw #0a0b0e, inset 0 1px 0 rgba(255,255,255,.25);
+  transition: transform .9s var(--spring); }
+.s-land .phone { transform: translate(10cqw, 6cqw) rotate(-90deg) scale(.86); }
+.pscreen { container-type: size; position: relative; width: 100%; height: 100%; border-radius: 3.7cqw; overflow: hidden; background: #000; }
+.pscreen video, .pscreen img.poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pscreen .landv { inset: auto; max-width: none; width: 206%; height: 48.6%; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg); opacity: 0; transition: opacity .4s .35s; }
+.s-land .pscreen .landv { opacity: 1; }
+.pscreen .portv { transition: opacity .4s .35s; }
+.s-land .pscreen .portv { opacity: 0; }
+.island { position: absolute; z-index: 6; left: 50%; top: 2.2%; width: 32%; height: 4.2%; transform: translateX(-50%); border-radius: 999px; background: #000; transition: width .5s var(--spring); }
+.s-win .island { width: 40%; }
+.island::after { content: ""; position: absolute; right: 9%; top: 50%; width: 9cqw; height: 9cqw; max-width: 18%; transform: translateY(-50%); border-radius: 50%; }
+.s-win .island::after { background: #2f7bff; box-shadow: 0 0 6px #2f7bff; }
+/* Control Center */
+.cc { position: absolute; inset: 0; z-index: 4; padding: 22cqw 7cqw 0; background: rgba(10,12,22,.45); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  opacity: 0; transform: translateY(-6%); transition: opacity .45s var(--ease), transform .6s var(--spring); }
+.s-cc .cc { opacity: 1; transform: none; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 4cqw; }
+.tile { border-radius: 9cqw; background: rgba(255,255,255,.16); aspect-ratio: 1; }
+.tile.wide { grid-column: span 2; aspect-ratio: auto; height: 22cqw; border-radius: 9cqw; display: flex; align-items: center; gap: 4cqw; padding: 0 6cqw; color: #fff; font-size: 6.4cqw; font-weight: 600; transition: background .3s, transform .3s var(--spring); }
+.tile.wide svg { width: 9cqw; height: 9cqw; flex: none; }
+.tile.small { display: grid; grid-template-columns: 1fr 1fr; gap: 3cqw; padding: 5cqw; aspect-ratio: 1; }
+.tile.small i { border-radius: 50%; background: rgba(255,255,255,.22); }
+.tile.small i:nth-child(1) { background: #2f7bff; } .tile.small i:nth-child(2) { background: #2f7bff; }
+.tile.small i:nth-child(3) { background: #ff9f2f; } .tile.small i:nth-child(4) { background: rgba(255,255,255,.25); }
+.tile.music { padding: 6cqw; display: flex; flex-direction: column; justify-content: space-between; }
+.tile.music b { display: block; width: 60%; height: 3cqw; border-radius: 2cqw; background: rgba(255,255,255,.5); }
+.tile.music b + b { width: 40%; background: rgba(255,255,255,.28); }
+.s-tapTile .tile.wide { background: rgba(255,255,255,.34); transform: scale(.96); }
+.sheet { position: absolute; z-index: 5; left: 6cqw; right: 6cqw; top: 30cqw; border-radius: 9cqw; padding: 7cqw 6cqw; color: #fff;
+  background: rgba(40,42,58,.78); backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5); border: 1px solid rgba(255,255,255,.12);
+  opacity: 0; transform: scale(.85); transition: opacity .35s var(--ease), transform .5s var(--spring); }
+.s-list .sheet { opacity: 1; transform: none; }
+.sheet h4 { margin: 0 0 5cqw; font-size: 7cqw; text-align: center; }
+.row { display: flex; align-items: center; gap: 4cqw; padding: 4.5cqw 4cqw; border-radius: 5cqw; font-size: 5.4cqw; white-space: nowrap; font-weight: 500; transition: background .25s; }
+.row svg { width: 8cqw; height: 8cqw; flex: none; opacity: .9; }
+.row .spin { margin-left: auto; width: 7cqw; height: 7cqw; border-radius: 50%; border: .9cqw solid rgba(255,255,255,.25); border-top-color: #fff; opacity: 0; }
+.s-tapRow .row.pc { background: rgba(255,255,255,.14); }
+.s-tapRow .row.pc .spin { opacity: 1; animation: auroraSpin .8s linear infinite; }
+.row.tv { opacity: .55; }
+.tap { position: absolute; z-index: 7; width: 22cqw; height: 22cqw; margin: -11cqw 0 0 -11cqw; border-radius: 50%; background: rgba(255,255,255,.55); opacity: 0; transform: scale(.2); pointer-events: none; }
+.tap.t1 { left: 50%; top: 52%; } .tap.t2 { left: 40%; top: 46%; }
+.s-tapTile .tap.t1, .s-tapRow .tap.t2 { animation: tap .7s var(--ease) forwards; }
+@keyframes tap { 0% { opacity: .7; transform: scale(.2); } 100% { opacity: 0; transform: scale(1.4); } }
+/* phone mini player (music) */
+.mini { position: absolute; z-index: 4; left: 6.8%; right: 6.8%; top: 77.5%; height: 12.5%; padding: 0 5cqw; border-radius: 5cqw; display: flex; align-items: center; gap: 4cqw;
+  background: rgba(30,32,48,.6); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,.14); color: #fff;
+  opacity: 0; transform: translateY(8cqw); transition: opacity .45s var(--ease), transform .6s var(--spring); }
+.s-music .mini { opacity: 1; transform: none; transition-delay: .2s; }
+.mini .ma { width: 15cqw; height: 15cqw; border-radius: 3cqw; background: linear-gradient(135deg, #ffd27a, #ff7aa8 55%, #8a6bff); flex: none; }
+.mini .mt { font-size: 5.4cqw; font-weight: 700; line-height: 1.2; }
+.mini .md { font-size: 4.4cqw; color: #8fb2ff; display: flex; align-items: center; gap: 1.5cqw; }
+.mini .md svg { width: 4.8cqw; height: 4.8cqw; }
+
+/* Demo controls */
+.dctl { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 26px auto 0; flex-wrap: wrap; }
+.chip { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; cursor: pointer;
+  font: 600 14px Inter, system-ui, sans-serif; color: var(--muted); background: var(--glass); border: 1px solid var(--line); transition: color .25s, border-color .25s, background .25s; }
+.chip span { position: relative; z-index: 1; }
+.chip i { font-style: normal; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,.08); font-size: 11.5px; position: relative; z-index: 1; }
+.chip::before { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, rgba(125,139,255,.28), rgba(180,108,255,.28)); }
+.chip.on { color: var(--ink); border-color: rgba(160,150,255,.45); }
+.chip.on i { background: linear-gradient(135deg, #6f7fff, #b46cff); color: #fff; }
+.chip.on::before { animation: fill var(--dur, 4s) linear forwards; }
+.paused .chip.on::before { animation-play-state: paused; }
+@keyframes fill { to { transform: scaleX(1); } }
+.playbtn { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; background: var(--glass); border: 1px solid var(--line); color: var(--ink); }
+.playbtn svg { width: 16px; height: 16px; }
+.caption { text-align: center; color: var(--muted); font-size: 15.5px; min-height: 26px; margin-top: 16px; transition: opacity .3s; }
+.caption.fade { opacity: 0; }
+.note { text-align: center; color: var(--faint); font-size: 12.5px; margin-top: 6px; }
+
+/* ===== Sections ===================================================================== */
+section { padding: 88px 0; position: relative; }
+.eyebrow { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #aab3ff; margin-bottom: 14px; }
+h2 { font-size: clamp(30px, 4.6vw, 52px); letter-spacing: -.035em; margin: 0 0 14px; line-height: 1.06; }
+.sub { color: var(--muted); margin: 0 0 40px; max-width: 640px; font-size: 18px; }
+.center { text-align: center; } .center .sub { margin-left: auto; margin-right: auto; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; border-radius: var(--radius); overflow: hidden; background: var(--line); border: 1px solid var(--line); }
+.stats > div { background: rgba(10,12,20,.75); padding: 28px 20px; text-align: center; }
+.stats b { display: block; font-size: clamp(30px, 4vw, 44px); font-weight: 800; letter-spacing: -.03em;
+  background: linear-gradient(120deg, #fff, #c2c9ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.stats span { color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) { .stats { grid-template-columns: 1fr 1fr; } }
+
+/* Cards with cursor spotlight */
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+.card { position: relative; background: var(--glass); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; overflow: hidden;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); transition: border-color .3s, transform .4s var(--spring); }
+.card::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s;
+  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), rgba(140,150,255,.16), transparent 45%); }
+.card:hover { border-color: rgba(255,255,255,.16); transform: translateY(-3px); }
+.card:hover::before { opacity: 1; }
+.card h3 { margin: 14px 0 6px; font-size: 18px; letter-spacing: -.01em; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.ico { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; background: linear-gradient(135deg, rgba(125,139,255,.32), rgba(180,108,255,.32)); border: 1px solid var(--rim); box-shadow: inset 0 1px 0 rgba(255,255,255,.2); }
+.ico svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Real frames */
+.frames { perspective: 1400px; }
+.frame { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--rim); box-shadow: 0 40px 90px -40px rgba(0,0,0,.95), 0 0 0 8px rgba(255,255,255,.02);
+  transform: rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transition: transform .5s var(--ease); will-change: transform; }
+.frame img { width: 100%; }
+.frame::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgba(255,255,255,.12), transparent 35%); }
+.tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 22px; }
+.tags span { font-size: 13px; color: var(--muted); padding: 6px 12px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); }
+
+/* Lossless */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+@media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+.bitbox { padding: 26px; }
+.spectrum { display: grid; grid-template-columns: repeat(40, 1fr); gap: 3px; height: 140px; align-items: end; margin-bottom: 18px; }
+.spectrum i { display: block; border-radius: 3px; height: 20%; background: linear-gradient(180deg, #9ee9ff, #7d8bff 55%, #b46cff); animation: eq var(--d, 1s) ease-in-out infinite alternate; }
+.chain { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 8px; font-size: 13.5px; }
+.chain div { text-align: center; padding: 10px 6px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+.chain div b { display: block; font-size: 14px; }
+.chain div small { color: var(--faint); }
+.chain svg { width: 18px; height: 18px; stroke: var(--faint); }
+.hash { margin-top: 14px; font: 13px ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--muted); display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: 12px; background: rgba(0,0,0,.25); border: 1px solid var(--line); }
+.hash .ok { color: var(--good); }
+ul.checks { list-style: none; padding: 0; margin: 22px 0 0; }
+ul.checks li { position: relative; padding: 7px 0 7px 30px; color: #dfe3f2; }
+ul.checks li::before { content: ""; position: absolute; left: 0; top: 11px; width: 18px; height: 18px; border-radius: 50%; background: rgba(95,227,161,.15) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235fe3a1' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12l5 5 9-10'/></svg>") center/12px no-repeat; }
+
+/* Steps */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: s; }
+@media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+.step { counter-increment: s; }
+.step::after { content: counter(s); position: absolute; right: 18px; top: 6px; font-size: 92px; font-weight: 800; line-height: 1; color: rgba(255,255,255,.04); }
+
+/* Pricing */
+.pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 860px; margin: 0 auto; }
+@media (max-width: 720px) { .pricing { grid-template-columns: 1fr; } }
+.plan { display: flex; flex-direction: column; text-align: left; }
+.plan.pro { background: linear-gradient(160deg, rgba(125,139,255,.17), rgba(180,108,255,.11)); border-color: rgba(160,150,255,.42); }
+.plan.pro::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: conic-gradient(from var(--a, 0deg), transparent 0 70%, rgba(190,170,255,.9) 85%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: orbit 6s linear infinite; }
+@property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes orbit { to { --a: 360deg; } }
+.ribbon { position: absolute; top: 18px; right: 18px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: linear-gradient(135deg, #6f7fff, #b46cff); }
+.price { font-size: 46px; font-weight: 800; letter-spacing: -.03em; margin: 4px 0 0; }
+.price small { font-size: 15px; font-weight: 500; color: var(--muted); }
+.plan ul { list-style: none; padding: 0; margin: 18px 0 26px; flex: 1; }
+.plan li { padding: 7px 0 7px 28px; position: relative; color: #dfe3f2; font-size: 15px; }
+.plan li::before { content: "✓"; position: absolute; left: 0; color: var(--good); font-weight: 700; }
+.plan li.no { color: var(--faint); } .plan li.no::before { content: "–"; color: var(--faint); }
+.fine { color: var(--faint); font-size: 13px; margin-top: 16px; }
+
+/* Download */
+.dl { text-align: center; padding: 56px 24px; position: relative; overflow: hidden; }
+.dl::before { content: ""; position: absolute; left: 50%; top: -60%; width: 700px; height: 500px; transform: translateX(-50%); background: radial-gradient(closest-side, rgba(125,139,255,.35), transparent); pointer-events: none; }
+.dl img { margin: 0 auto; width: 84px; height: 84px; border-radius: 20px; box-shadow: 0 20px 50px -18px rgba(125,139,255,.9); animation: bob 5s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-6px); } }
+
+/* FAQ */
+.faq { max-width: 820px; margin: 0 auto; }
+details { border-bottom: 1px solid var(--line); }
+summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 2px; font-weight: 600; font-size: 17px; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: ""; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--glass-2) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round'><path d='M12 6v12M6 12h12'/></svg>") center/12px no-repeat; transition: transform .35s var(--spring); }
+details[open] summary::after { transform: rotate(45deg); }
+details p { color: var(--muted); margin: 0 0 20px; padding-right: 30px; }
+
+/* Legal */
+.legal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .legal { grid-template-columns: 1fr; } }
+.legal h3 { margin-top: 0; }
+.legal p, .legal li { color: var(--muted); font-size: 14px; }
+.legal ul { padding-left: 18px; margin: 8px 0 0; }
+
+footer { padding: 40px 0 110px; color: var(--faint); font-size: 13px; border-top: 1px solid var(--line); }
+footer .row2 { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+footer a { color: var(--muted); }
+
+/* Sticky CTA nudge */
+.sticky { position: fixed; left: 50%; bottom: 18px; z-index: 60; display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 16px; border-radius: 999px;
+  background: rgba(14,16,26,.78); border: 1px solid var(--rim); box-shadow: 0 20px 50px -20px rgba(0,0,0,.9); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  transform: translate(-50%, 140%); opacity: 0; transition: transform .6s var(--spring), opacity .4s; font-size: 14px; white-space: nowrap; }
+.sticky.show { transform: translate(-50%, 0); opacity: 1; }
+.sticky img { width: 26px; height: 26px; border-radius: 7px; }
+.sticky .x { width: 30px; height: 30px; border-radius: 50%; border: 0; background: transparent; color: var(--faint); cursor: pointer; font-size: 18px; }
+@media (max-width: 520px) { .sticky .txt { display: none; } }
+
+/* Scroll reveal */
+[data-reveal] { opacity: 0; transform: translateY(26px); transition: opacity .9s var(--ease), transform 1s var(--ease); transition-delay: calc(var(--i, 0) * 90ms); }
+[data-reveal].in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+  [data-reveal] { opacity: 1; transform: none; }
+}
 </style>
 </head>
 <body>
 <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="grain" aria-hidden="true"></div>
 
-<div class="wrap">
-  <nav>
-    <a class="brand" href="#"><img src="icon.png" alt=""> AirGlass</a>
+<nav class="top" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="icon.png" alt="">AirGlass</a>
     <div class="navlinks">
+      <a class="hide-sm" href="#demo">Demo</a>
       <a class="hide-sm" href="#features">Features</a>
       <a class="hide-sm" href="#pricing">Pricing</a>
-      <a class="hide-sm" href="#faq">FAQ</a>
-      <a class="btn small" href="#download">Download</a>
+      <a class="hide-sm" href="https://github.com/jdkuk/AirGlass">GitHub</a>
+      <a class="btn small primary" href="#download">Download</a>
     </div>
-  </nav>
+  </div>
+</nav>
 
-  <header class="hero">
-    <div>
-      <span class="eyebrow">For Windows 10 &amp; 11</span>
-      <h1><span class="grad">AirPlay to your PC.</span><br>Beautifully.</h1>
-      <p class="lede">Mirror your iPhone, iPad or Mac to Windows in a Liquid Glass window, and play AirPlay music in true lossless quality. No accounts, no bloat, nothing to configure.</p>
-      <div class="cta">
-        <a class="btn primary" id="download-hero" href="#download">Download free</a>
-        <a class="btn" href="#pricing">Get Pro · $2.99</a>
-      </div>
-      <p class="fine">Free forever for full-screen mirroring. Pro is a one-time $2.99.</p>
-    </div>
-    <div class="stage" aria-label="AirGlass mirroring an iPhone in a floating glass window">
-      <div class="desk"></div>
-      <div class="slab">
-        <div class="screen">
-          <div class="date">TUESDAY 7 OCTOBER</div>
-          <div class="time">9:41</div>
-          <div class="np"></div>
+<main>
+<header class="hero wrap">
+  <a class="pill" href="#lossless" data-reveal><b>New</b> Bit-perfect lossless AirPlay music on Windows →</a>
+  <h1 data-reveal style="--i:1"><span class="grad">AirPlay to your PC.</span><br>Beautifully.</h1>
+  <p class="lede" data-reveal style="--i:2">Mirror your iPhone, iPad or Mac to Windows in a Liquid Glass window, and play AirPlay music in true lossless quality. No account, no setup, no bloat.</p>
+  <div class="cta" data-reveal style="--i:3">
+    <a class="btn primary pulse" href="#download">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+      Download free
+    </a>
+    <a class="btn" href="#demo">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
+      Watch it work
+    </a>
+  </div>
+  <div class="trust" data-reveal style="--i:4">
+    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Free to use</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Windows 10 &amp; 11</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Open source</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Nothing leaves your network</span>
+  </div>
+</header>
+
+<!-- ===== Live demo ===== -->
+<div class="demo wrap" id="demo">
+  <div class="stage" id="stage" data-reveal role="img" aria-label="Animated demo: an iPhone chooses the PC in Screen Mirroring, a glass window appears on the PC, the phone rotates and the window morphs to landscape, then lossless music plays.">
+    <div class="stand"></div>
+    <div class="monitor">
+      <div class="screen">
+        <div class="win">
+          <div class="content">
+            <div class="ph">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><path d="M5 17H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-1"/><path d="M12 15l5 6H7z" fill="#fff"/></svg>
+              <span>Taylor's iPhone <em>· Connecting…</em></span>
+            </div>
+            <video class="port" src="media/portrait.mp4" poster="media/portrait.jpg" muted loop playsinline preload="auto"></video>
+            <video class="land" src="media/landscape.mp4" poster="media/landscape.jpg" muted loop playsinline preload="auto"></video>
+          </div>
+          <div class="cap" aria-hidden="true">
+            <span class="drop"></span>
+            <i><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></i>
+            <i><svg viewBox="0 0 24 24"><path d="M9 4h6l-1 6 4 3H6l4-3zM12 13v7"/></svg></i>
+            <i><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></i>
+          </div>
         </div>
-        <div class="capsule"><span>✕</span><span>📌</span><span>⤢</span></div>
+        <div class="np">
+          <div class="art"></div>
+          <div>
+            <div class="t">Clair de Lune</div>
+            <div class="a">Debussy · from Taylor's iPhone</div>
+            <div class="badges"><b>ALAC 16-bit / 44.1 kHz</b><b class="ok">Lossless · bit-perfect</b></div>
+          </div>
+          <div class="meters" id="meters"></div>
+          <div class="prog"><i></i></div>
+        </div>
+        <svg class="cursor" viewBox="0 0 24 24"><path d="M5 3l14 8-6.2 1.6L10 19z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        <div class="taskbar">
+          <div class="apps"><i></i><i></i><i></i><i></i></div>
+          <div class="tray"><span class="trayicon"></span><span>9:41</span></div>
+        </div>
       </div>
-      <div class="badge-float">Music: <b>Apple Lossless · bit-perfect</b></div>
     </div>
-  </header>
+    <div class="phone">
+      <div class="pscreen">
+        <div class="island"></div>
+        <video class="portv" src="media/portrait.mp4" poster="media/portrait.jpg" muted loop playsinline preload="auto"></video>
+        <video class="landv" src="media/landscape.mp4" poster="media/landscape.jpg" muted loop playsinline preload="auto"></video>
+        <div class="cc">
+          <div class="tiles">
+            <div class="tile small"><i></i><i></i><i></i><i></i></div>
+            <div class="tile music"><b></b><b></b></div>
+            <div class="tile wide">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="5" width="13" height="9" rx="2"/><rect x="8" y="10" width="13" height="9" rx="2" fill="rgba(255,255,255,.25)"/></svg>
+              Screen Mirroring
+            </div>
+          </div>
+          <span class="tap t1"></span>
+        </div>
+        <div class="sheet">
+          <h4>Screen Mirroring</h4>
+          <div class="row pc">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            Living Room PC <span class="spin"></span>
+          </div>
+          <div class="row tv">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="11" rx="2"/><path d="M9 20h6"/></svg>
+            Bedroom TV
+          </div>
+          <span class="tap t2"></span>
+        </div>
+        <div class="mini">
+          <span class="ma"></span>
+          <div><div class="mt">Clair de Lune</div><div class="md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 17H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-1"/><path d="M12 14l5 6H7z" fill="currentColor"/></svg>Living Room PC</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dctl" id="dctl" data-reveal>
+    <button class="playbtn" id="play" aria-label="Pause demo"><svg id="playicon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+    <button class="chip" data-step="0"><i>1</i><span>Pick your PC</span></button>
+    <button class="chip" data-step="1"><i>2</i><span>Glass window</span></button>
+    <button class="chip" data-step="2"><i>3</i><span>Rotate</span></button>
+    <button class="chip" data-step="3"><i>4</i><span>Lossless music</span></button>
+  </div>
+  <p class="caption" id="caption" aria-live="polite">&nbsp;</p>
+  <p class="note">Animated illustration of the real app. <a href="#frames">See actual AirGlass frames ↓</a></p>
 </div>
 
+<!-- ===== Stats ===== -->
+<section style="padding-top: 40px">
+  <div class="wrap">
+    <div class="stats" data-reveal>
+      <div><b data-count="60">0</b><span>fps mirroring</span></div>
+      <div><b data-count="120" data-suffix=" Hz">0</b><span>glass animations</span></div>
+      <div><b data-count="0" data-suffix="%">0</b><span>GPU when idle</span></div>
+      <div><b>1:1</b><span>bit-perfect ALAC</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Features ===== -->
 <section id="features">
   <div class="wrap">
-    <h2>Made to feel native.</h2>
-    <p class="sub">AirGlass is a small native Windows app written for speed. It shows up as an AirPlay receiver for every Apple device on your network.</p>
+    <span class="eyebrow" data-reveal>Features</span>
+    <h2 data-reveal style="--i:1">Feels like it came with Windows.</h2>
+    <p class="sub" data-reveal style="--i:2">A small native app, written for speed. It shows up as an AirPlay receiver for every Apple device on your network.</p>
     <div class="grid">
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4"/></svg></div>
-        <h3>Screen Mirroring</h3>
-        <p>Control Center → Screen Mirroring → your PC. The picture pops in within a blink and melts away when you stop.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
-        <h3>Lossless music</h3>
-        <p>AirPlay audio arrives as Apple Lossless (16-bit/44.1 kHz) and is decoded bit-for-bit, with a studio-grade resampler.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
-        <h3>Smooth</h3>
-        <p>Hardware video decoding, about 60 fps mirroring, and an interface that animates at your display's refresh rate, up to 120 Hz.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M21 3 12 12"/></svg></div>
-        <h3>Rotation that flows</h3>
-        <p>Turn your phone and the glass window morphs between portrait and landscape instead of jumping.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></div>
-        <h3>Tiny &amp; clean</h3>
-        <p>No Bonjour install, no .NET, no browser engine, no adware. It sits quietly in the tray.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></svg></div>
-        <h3>Private</h3>
-        <p>Everything stays on your local network. No account, no analytics, no cloud.</p>
-      </div>
+      <div class="card" data-reveal><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4"/></svg></div><h3>Screen Mirroring</h3><p>Control Center → Screen Mirroring → your PC. The picture pops in within a blink and melts away when you stop.</p></div>
+      <div class="card" data-reveal style="--i:1"><div class="ico"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><h3>Lossless music</h3><p>AirPlay audio arrives as Apple Lossless and is decoded bit-for-bit, with a studio-grade resampler for your sound card.</p></div>
+      <div class="card" data-reveal style="--i:2"><div class="ico"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div><h3>Smooth</h3><p>Hardware video decoding, about 60 fps mirroring, and every animation at your display's refresh rate, up to 120 Hz.</p></div>
+      <div class="card" data-reveal><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M21 3 12 12"/></svg></div><h3>Rotation that flows</h3><p>Turn your phone and the glass window morphs between portrait and landscape instead of jumping.</p></div>
+      <div class="card" data-reveal style="--i:1"><div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></div><h3>Tiny &amp; clean</h3><p>No Bonjour install, no .NET, no browser engine, no adware. It sits quietly in the tray.</p></div>
+      <div class="card" data-reveal style="--i:2"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></svg></div><h3>Private</h3><p>Everything stays on your local network. No account, no analytics, no cloud.</p></div>
     </div>
   </div>
 </section>
 
+<!-- ===== Real frames ===== -->
+<section id="frames">
+  <div class="wrap center">
+    <span class="eyebrow" data-reveal>Not a mockup</span>
+    <h2 data-reveal style="--i:1">Real frames, rendered live.</h2>
+    <p class="sub" data-reveal style="--i:2">Captured straight from AirGlass's GPU renderer: the refractive glass rim, the floating controls and the soft shadow are drawn every frame.</p>
+    <div class="frames" data-reveal style="--i:3">
+      <div class="frame" id="frame"><img src="media/desktop.jpg" alt="AirGlass mirroring a Mac in landscape and an iPhone in portrait, in floating glass windows on a Windows desktop" loading="lazy" width="1600" height="900"></div>
+    </div>
+    <div class="tags" data-reveal style="--i:4"><span>Direct3D 11</span><span>DirectComposition</span><span>Spring physics</span><span>Per-pixel alpha</span><span>Hardware H.264</span></div>
+  </div>
+</section>
+
+<!-- ===== Lossless ===== -->
+<section id="lossless">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow" data-reveal>Sound</span>
+      <h2 data-reveal style="--i:1">Every bit, exactly as sent.</h2>
+      <p class="sub" data-reveal style="--i:2; margin-bottom:0">Pick your PC from the AirPlay button in Music and AirGlass plays Apple Lossless at CD quality, verified bit-for-bit against the source in our test suite.</p>
+      <ul class="checks" data-reveal style="--i:3">
+        <li>ALAC 16-bit / 44.1 kHz, decoded bit-exact</li>
+        <li>One conversion only, with a 128-tap windowed-sinc filter (&gt;105 dB clean)</li>
+        <li>Lost Wi-Fi packets are re-requested, so drop-outs are rare</li>
+        <li>Play, pause and skip from the PC, with track info and artwork</li>
+      </ul>
+    </div>
+    <div class="card bitbox" data-reveal style="--i:2">
+      <div class="spectrum" id="spectrum" aria-hidden="true"></div>
+      <div class="chain">
+        <div><b>iPhone</b><small>ALAC</small></div>
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>
+        <div><b>Wi-Fi</b><small>RTP · AES</small></div>
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>
+        <div><b>AirGlass</b><small>PCM out</small></div>
+      </div>
+      <div class="hash"><span>PCM in = PCM out</span><span class="ok">✓ identical</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== How it works ===== -->
 <section>
   <div class="wrap">
-    <h2>Up and running in a minute.</h2>
-    <p class="sub">There's no pairing or setup. Your PC and the Apple device just need to be on the same network.</p>
+    <span class="eyebrow" data-reveal>Setup</span>
+    <h2 data-reveal style="--i:1">Up and running in a minute.</h2>
+    <p class="sub" data-reveal style="--i:2">No pairing, no codes. Your PC and Apple device just need to be on the same network.</p>
     <div class="steps">
-      <div class="card step"><h3>Install AirGlass</h3><p>Run the installer. It adds itself to the tray and starts with Windows.</p></div>
-      <div class="card step"><h3>Pick your PC</h3><p>On your iPhone, iPad or Mac, open Screen Mirroring (or the AirPlay button in Music) and choose your PC's name.</p></div>
-      <div class="card step"><h3>That's it</h3><p>Your screen appears on the PC. Music plays through your PC's speakers in lossless quality.</p></div>
+      <div class="card step" data-reveal><h3>Install AirGlass</h3><p>Run the installer. It lives in the tray and starts with Windows, ready whenever you are.</p></div>
+      <div class="card step" data-reveal style="--i:1"><h3>Pick your PC</h3><p>On your iPhone, iPad or Mac open Screen Mirroring, or the AirPlay button in Music, and choose your PC.</p></div>
+      <div class="card step" data-reveal style="--i:2"><h3>That's it</h3><p>Your screen floats onto the PC in glass. Music plays through your speakers in lossless quality.</p></div>
     </div>
   </div>
 </section>
 
+<!-- ===== Pricing ===== -->
 <section id="pricing">
-  <div class="wrap">
-    <h2>Try it free. Unlock the window for $2.99.</h2>
-    <p class="sub">The free edition does everything full screen, so you can check it works with your devices before you pay a penny.</p>
+  <div class="wrap center">
+    <span class="eyebrow" data-reveal>Pricing</span>
+    <h2 data-reveal style="--i:1">Try it free. Unlock the glass for $2.99.</h2>
+    <p class="sub" data-reveal style="--i:2">The free edition mirrors full screen and plays lossless music, so you can check it works with your devices before you pay a penny.</p>
     <div class="pricing">
-      <div class="card plan">
+      <div class="card plan" data-reveal>
         <h3>Free</h3>
         <div class="price">$0</div>
         <ul>
@@ -248,7 +647,8 @@
         </ul>
         <a class="btn" href="#download">Download free</a>
       </div>
-      <div class="card plan pro">
+      <div class="card plan pro" data-reveal style="--i:1">
+        <span class="ribbon">Full experience</span>
         <h3>Pro</h3>
         <div class="price">$2.99 <small>one-time</small></div>
         <ul>
@@ -258,68 +658,205 @@
           <li>Keep on top and corner float</li>
           <li>Use on up to 3 PCs</li>
         </ul>
-        <a class="btn primary" id="buy" href="https://airglass.lemonsqueezy.com/">Buy AirGlass Pro</a>
+        <a class="btn primary" id="buy" href="https://airglass.lemonsqueezy.com/">Get AirGlass Pro</a>
       </div>
     </div>
     <p class="fine">Prices in USD; local taxes are added at checkout. Payment is processed by Lemon Squeezy, our merchant of record. Your license key arrives by email: paste it into AirGlass (tray icon → <em>Unlock windowed mode</em>).</p>
   </div>
 </section>
 
-<section id="download">
+<!-- ===== Download ===== -->
+<section id="download" style="padding-top: 20px">
   <div class="wrap">
-    <div class="card" style="text-align:center; padding:40px 24px;">
-      <img src="icon.png" alt="" width="72" height="72" style="border-radius:16px">
-      <h2 style="margin-top:14px">Download AirGlass</h2>
-      <p class="sub" style="margin:0 auto 24px">Windows 10 or 11, 64-bit. Free edition included, and Pro unlocks with a key.</p>
-      <a class="btn primary" id="download-btn" href="https://github.com/jdkuk/AirGlass/releases/latest">Download for Windows</a>
-      <p class="fine">Includes the full source code (GPL-3.0).</p>
+    <div class="card dl" data-reveal>
+      <img src="icon.png" alt="" width="84" height="84">
+      <h2 style="margin-top:22px">Get AirGlass</h2>
+      <p class="sub" style="margin: 0 auto 26px">Windows 10 or 11, 64-bit. The free edition is included, and Pro unlocks with a key.</p>
+      <a class="btn primary pulse" href="https://github.com/jdkuk/AirGlass/releases/latest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+        Download for Windows
+      </a>
+      <p class="fine">Open source (GPL-3.0) · <a href="https://github.com/jdkuk/AirGlass">view the code</a> · every release is built by GitHub Actions</p>
     </div>
   </div>
 </section>
 
+<!-- ===== FAQ ===== -->
 <section id="faq">
   <div class="wrap">
-    <h2>Questions</h2>
-    <details><summary>Does my PC need to be on the same Wi-Fi?</summary><p>It needs to be on the same network as your Apple device. Wi-Fi and Ethernet on the same router is fine. Guest networks and routers with "client isolation" block AirPlay.</p></details>
-    <details><summary>Which devices work?</summary><p>iPhone, iPad and Mac with Screen Mirroring, plus any app that plays AirPlay audio (Music, Spotify, podcasts and so on).</p></details>
-    <details><summary>Does it mirror in 4K?</summary><p>AirGlass asks your device for 1080p. Phones can't mirror 4K landscape smoothly (they drop to about 28 fps), and 1080p gives about 60 fps. Full screen is upscaled with a high-quality filter.</p></details>
-    <details><summary>Can I AirPlay a YouTube or Netflix video?</summary><p>Use Screen Mirroring. AirGlass doesn't support the "cast a video link" kind of AirPlay that some video apps use, and many of those apps block it on non-Apple receivers anyway.</p></details>
-    <details><summary>Is there a subscription?</summary><p>No. Pro is a one-time $2.99 that you can use on up to 3 of your PCs.</p></details>
-    <details><summary>Is it open source?</summary><p>Yes. AirGlass is licensed under the GPL-3.0 and the full source code comes with every download. Buying Pro supports development and gets you the ready-made installer, updates and support.</p></details>
-    <details><summary>Windows warns me about the installer. Is it safe?</summary><p>New apps from small developers can trigger a SmartScreen warning until they build up reputation. Click <em>More info → Run anyway</em>. The installer doesn't need administrator rights except to add one firewall rule so your devices can find the PC.</p></details>
-  </div>
-</section>
-
-<section id="legal">
-  <div class="wrap">
-    <div class="legal">
-      <div class="card" id="refunds">
-        <h3>Refund policy</h3>
-        <p>If AirGlass Pro doesn't work for you, ask for a full refund within <strong>14 days</strong> of purchase, with no questions asked. Reply to your receipt email or use the link in it. Refunded license keys are deactivated.</p>
-      </div>
-      <div class="card" id="privacy">
-        <h3>Privacy</h3>
-        <ul>
-          <li>AirGlass has no analytics, tracking or account.</li>
-          <li>Mirroring and music stay on your local network.</li>
-          <li>Activating Pro sends your license key and PC name to Lemon Squeezy to check the key. AirGlass re-checks it once per start.</li>
-          <li>Purchases are handled by Lemon Squeezy (merchant of record) under their privacy policy.</li>
-          <li>This website uses no cookies or trackers.</li>
-        </ul>
-      </div>
-      <div class="card" id="terms">
-        <h3>Terms</h3>
-        <p>AirGlass is provided as-is, without warranty, under the GNU GPL-3.0. A Pro license is personal, one-time and valid on up to 3 PCs. Support and questions: <a href="https://github.com/jdkuk/AirGlass/issues">open a support request</a>.</p>
-      </div>
+    <h2 class="center" data-reveal>Questions</h2>
+    <div class="faq" data-reveal style="--i:1">
+      <details><summary>Does my PC need to be on the same Wi-Fi?</summary><p>It needs to be on the same network as your Apple device. Wi-Fi and Ethernet on the same router is fine. Guest networks and routers with "client isolation" block AirPlay.</p></details>
+      <details><summary>Which devices work?</summary><p>iPhone, iPad and Mac with Screen Mirroring, plus any app that plays AirPlay audio (Music, Spotify, podcasts and so on).</p></details>
+      <details><summary>Does it mirror in 4K?</summary><p>AirGlass asks your device for 1080p. Phones can't mirror 4K landscape smoothly (they drop to about 28 fps), while 1080p runs at about 60 fps. Full screen is upscaled with a high-quality filter.</p></details>
+      <details><summary>Can I AirPlay a YouTube or Netflix video?</summary><p>Use Screen Mirroring. AirGlass doesn't support the "send a video link" kind of AirPlay, and protected video (Netflix and similar) shows black when mirrored, by design of those apps.</p></details>
+      <details><summary>Is there a subscription?</summary><p>No. Pro is a one-time $2.99 that you can use on up to 3 of your PCs.</p></details>
+      <details><summary>Windows warns me about the installer. Is it safe?</summary><p>New apps from small developers can trigger a SmartScreen warning until they build up reputation. Click <em>More info → Run anyway</em>. The code is public, and every release is built by GitHub Actions from a tagged commit.</p></details>
     </div>
   </div>
 </section>
 
+<!-- ===== Legal ===== -->
+<section id="legal" style="padding-top: 20px">
+  <div class="wrap">
+    <div class="legal">
+      <div class="card" id="refunds"><h3>Refund policy</h3><p>If AirGlass Pro doesn't work for you, ask for a full refund within <strong>14 days</strong> of purchase, with no questions asked. Reply to your receipt email or use the link in it. Refunded license keys are deactivated.</p></div>
+      <div class="card" id="privacy"><h3>Privacy</h3><ul>
+        <li>No analytics, tracking or account.</li>
+        <li>Mirroring and music stay on your local network.</li>
+        <li>Activating Pro sends your license key and PC name to Lemon Squeezy to check the key. AirGlass re-checks it once per start.</li>
+        <li>Purchases are handled by Lemon Squeezy (merchant of record) under their privacy policy.</li>
+        <li>This website uses no cookies or trackers.</li></ul></div>
+      <div class="card" id="terms"><h3>Terms</h3><p>AirGlass is provided as-is, without warranty, under the GNU GPL-3.0. A Pro license is personal, one-time and valid on up to 3 PCs. Support: <a href="https://github.com/jdkuk/AirGlass/issues">open a support request</a>.</p></div>
+    </div>
+  </div>
+</section>
+</main>
+
 <footer>
-  <div class="wrap row">
+  <div class="wrap row2">
     <span>© 2026 AirGlass · <a href="https://github.com/jdkuk/AirGlass">Source on GitHub</a> · <a href="https://github.com/jdkuk/AirGlass/tree/main/docs">Docs</a></span>
     <span>AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc. AirGlass is not affiliated with or endorsed by Apple.</span>
   </div>
 </footer>
+
+<div class="sticky" id="sticky" role="complementary" aria-label="Download AirGlass">
+  <img src="icon.png" alt=""><span class="txt">AirGlass is free to try on Windows</span>
+  <a class="btn small primary" href="#download">Download free</a>
+  <button class="x" id="stickyx" aria-label="Dismiss">×</button>
+</div>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* Nav background once the page scrolls */
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', scrollY > 8);
+  addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+  /* Scroll reveals + count-ups */
+  const countUp = el => {
+    const end = +el.dataset.count, suffix = el.dataset.suffix || '';
+    if (reduce || end === 0) { el.textContent = end + suffix; return; }
+    const t0 = performance.now(), dur = 1400;
+    const tick = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = Math.round(end * e) + suffix; if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  };
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    e.target.classList.add('in');
+    e.target.querySelectorAll('[data-count]').forEach(countUp);
+    io.unobserve(e.target);
+  }), { threshold: .14, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+
+  /* Cursor spotlight on cards */
+  document.querySelectorAll('.card').forEach(c => c.addEventListener('pointermove', e => {
+    const r = c.getBoundingClientRect();
+    c.style.setProperty('--mx', (e.clientX - r.left) + 'px'); c.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  }));
+
+  /* Gentle tilt on the real-frames screenshot */
+  const frame = document.getElementById('frame');
+  if (!reduce && frame) {
+    frame.parentElement.addEventListener('pointermove', e => {
+      const r = frame.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      frame.style.setProperty('--ry', (x * 6).toFixed(2) + 'deg'); frame.style.setProperty('--rx', (-y * 5 + 2).toFixed(2) + 'deg');
+    });
+    frame.parentElement.addEventListener('pointerleave', () => { frame.style.setProperty('--ry', '0deg'); frame.style.setProperty('--rx', '6deg'); });
+  }
+
+  /* Equaliser bars */
+  const bars = (host, n, maxH) => { for (let i = 0; i < n; i++) { const b = document.createElement('i');
+    b.style.setProperty('--d', (0.45 + Math.random() * 0.7).toFixed(2) + 's');
+    b.style.setProperty('--h', (35 + Math.random() * maxH).toFixed(0) + '%');
+    b.style.animationDelay = (-Math.random()).toFixed(2) + 's'; host.appendChild(b); } };
+  bars(document.getElementById('meters'), 28, 60);
+  bars(document.getElementById('spectrum'), 40, 62);
+
+  /* Sticky download nudge after the hero */
+  const sticky = document.getElementById('sticky'), hero = document.querySelector('header.hero');
+  let dismissed = false;
+  try { dismissed = sessionStorage.getItem('ag-sticky') === '0'; } catch (e) {}
+  const dl = document.getElementById('download');
+  const stickyIO = new IntersectionObserver(() => {
+    const heroGone = hero.getBoundingClientRect().bottom < 0;
+    const dlVisible = dl.getBoundingClientRect().top < innerHeight && dl.getBoundingClientRect().bottom > 0;
+    sticky.classList.toggle('show', heroGone && !dlVisible && !dismissed);
+  }, { threshold: [0, 1] });
+  addEventListener('scroll', () => {
+    const heroGone = hero.getBoundingClientRect().bottom < 0;
+    const r = dl.getBoundingClientRect();
+    sticky.classList.toggle('show', heroGone && !(r.top < innerHeight && r.bottom > 0) && !dismissed);
+  }, { passive: true });
+  stickyIO.observe(hero);
+  document.getElementById('stickyx').onclick = () => { dismissed = true; sticky.classList.remove('show');
+    try { sessionStorage.setItem('ag-sticky', '0'); } catch (e) {} };
+
+  /* ===== Demo timeline ===== */
+  const stage = document.getElementById('stage');
+  const caption = document.getElementById('caption');
+  const chips = [...document.querySelectorAll('.chip')];
+  const dctl = document.getElementById('dctl');
+  const playBtn = document.getElementById('play'), playIcon = document.getElementById('playicon');
+  const videos = [...stage.querySelectorAll('video')];
+  // Each scene: classes on the stage, duration (ms), demo step and caption.
+  const S = (cls, ms, step, text) => ({ cls, ms, step, text });
+  const scenes = [
+    S([], 900, 0, 'Open Control Center on your iPhone…'),
+    S(['cc'], 900, 0, 'Open Control Center on your iPhone…'),
+    S(['cc', 'tapTile'], 700, 0, '…tap Screen Mirroring…'),
+    S(['cc', 'list'], 900, 0, '…and choose your PC.'),
+    S(['cc', 'list', 'tapRow'], 900, 0, '…and choose your PC.'),
+    S(['win', 'tray'], 1100, 1, 'A glass window springs in on your PC.'),
+    S(['win', 'live'], 1900, 1, 'Your screen resolves out of a blur, live at about 60 fps.'),
+    S(['win', 'live', 'hover'], 2000, 1, 'Hover for glass controls: close, keep on top, full screen.'),
+    S(['win', 'live', 'land'], 3400, 2, 'Rotate the phone and the window morphs to landscape.'),
+    S(['music', 'tray'], 4600, 3, 'Or send music: Apple Lossless, bit-perfect, with track info.'),
+  ];
+  const stepStart = [0, 5, 8, 9];
+  const stepDur = [0, 1, 2, 3].map(s => scenes.filter(x => x.step === s).reduce((a, x) => a + x.ms, 0));
+  let idx = 0, timer = 0, playing = !reduce, visible = false, curStep = -1;
+
+  const apply = i => {
+    const sc = scenes[i];
+    stage.className = 'stage' + sc.cls.map(c => ' s-' + c).join('');
+    stage.classList.toggle('in', true);
+    if (sc.step !== curStep) {
+      curStep = sc.step;
+      chips.forEach((c, k) => { c.classList.remove('on'); if (k === sc.step) { void c.offsetWidth; c.style.setProperty('--dur', stepDur[k] + 'ms'); c.classList.add('on'); } });
+    }
+    if (caption.textContent !== sc.text) {
+      caption.classList.add('fade');
+      setTimeout(() => { caption.textContent = sc.text; caption.classList.remove('fade'); }, 180);
+    }
+  };
+  const run = () => {
+    clearTimeout(timer);
+    apply(idx);
+    if (!playing || !visible) return;
+    timer = setTimeout(() => { idx = (idx + 1) % scenes.length; if (idx === 0) curStep = -1; run(); }, scenes[idx].ms);
+  };
+  const setPlaying = p => {
+    playing = p;
+    dctl.classList.toggle('paused', !p);
+    playBtn.setAttribute('aria-label', p ? 'Pause demo' : 'Play demo');
+    playIcon.innerHTML = p ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5.5v13l11-6.5z"/>';
+    videos.forEach(v => (p && visible) ? v.play().catch(() => {}) : v.pause());
+    run();
+  };
+  playBtn.onclick = () => setPlaying(!playing);
+  chips.forEach((c, k) => c.onclick = () => { idx = stepStart[k]; curStep = -1; if (!playing) apply(idx); run(); });
+  new IntersectionObserver(es => { visible = es[0].isIntersecting;
+    videos.forEach(v => (visible && playing) ? v.play().catch(() => {}) : v.pause()); run(); }, { threshold: .25 }).observe(stage);
+  const forced = new URLSearchParams(location.search).get('scene');
+  if (forced !== null) { idx = +forced; playing = false; dctl.classList.add('paused');
+    if (new URLSearchParams(location.search).has('still')) { const st = document.createElement('style'); st.textContent = '*,*::before,*::after{transition:none!important}[data-reveal]{opacity:1!important;transform:none!important}'; document.head.appendChild(st); } }
+  if (reduce) { idx = 6; dctl.classList.add('paused'); playIcon.innerHTML = '<path d="M8 5.5v13l11-6.5z"/>'; }
+  apply(idx);
+})();
+</script>
 </body>
 </html>
