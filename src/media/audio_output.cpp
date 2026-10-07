@@ -7,7 +7,9 @@
 
 namespace {
 // Jitter-buffer targets (seconds of audio queued ahead of the output position).
-constexpr double kMirrorTarget = 0.06, kMirrorMax = 0.20;
+// Mirroring starts at 90 ms: from 60 ms a real iPhone underran 4x in the first seconds (it settled
+// at 120 ms); lower keeps lip sync tighter since video is shown as soon as it is decoded.
+constexpr double kMirrorTarget = 0.09, kMirrorMax = 0.20;
 constexpr double kMusicTarget = 0.23, kMusicMax = 0.50;  // RECORD reports ~250 ms latency
 
 const GUID kClsidEnumerator = {0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};

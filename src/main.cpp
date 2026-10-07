@@ -194,8 +194,10 @@ ReceiverInfo App::BuildIdentity() {
     ri.displayUuid = cfg_.displayUuid;
     ri.features = 0x5A7FFEE6ull;  // mirroring + audio + legacy pairing; no URL/HLS video
 
-    // Advertise the primary monitor as the display so the sender streams at a resolution that
-    // stays sharp even when the window is full screen.
+    // Advertise the primary monitor's shape, capped at 1080p. An iPhone asked for 4K mirrors
+    // landscape at ~28 fps (8.3 MP per frame), while ~2 MP frames (1080p, or 4K-tall portrait)
+    // run at 55-60 fps. Full screen upscales with the bicubic video filter. A bigger display can
+    // still be forced with width/height under [video] in config.ini.
     DEVMODEW dm{};
     dm.dmSize = sizeof(dm);
     int w = 1920, h = 1080, hz = 60;
@@ -205,7 +207,7 @@ ReceiverInfo App::BuildIdentity() {
         if (dm.dmDisplayFrequency > 1) hz = int(dm.dmDisplayFrequency);
     }
     if (w < h) std::swap(w, h);
-    float scale = std::min({1.0f, 3840.0f / float(w), 2160.0f / float(h)});
+    float scale = std::min({1.0f, 1920.0f / float(w), 1080.0f / float(h)});
     w = int(float(w) * scale) & ~1;
     h = int(float(h) * scale) & ~1;
     if (h < 1080) {

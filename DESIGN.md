@@ -89,8 +89,8 @@ D2D (text) and the renderer; a single recursive GPU lock serialises immediate-co
    `<Name>-AirGlass.local`, announces 3× at start, goodbye on exit. Features
    `0x5A7FFEE6,0x0` (screen mirroring + audio + legacy pairing, no URL/HLS video).
 2. **GET /info** — binary plist: deviceID, features, pk, name, model `AppleTV3,2`,
-   displays[{width,height,refreshRate,maxFPS…}] (display = your monitor's resolution,
-   capped 3840×2160, refresh capped 120), audio formats/latencies.
+   displays[{width,height,refreshRate,maxFPS…}] (display = the monitor's shape capped at
+   1920×1080, because iPhones mirror 4K landscape at only ~28 fps; refresh capped 120), audio formats/latencies.
 3. **pair-setup** — exchange Ed25519 public keys (persistent receiver identity).
 4. **pair-verify** — X25519 ECDH; AES-128-CTR keyed by SHA-512("Pair-Verify-AES-Key"‖S),
    IV by SHA-512("Pair-Verify-AES-IV"‖S); Ed25519 signatures both ways.
