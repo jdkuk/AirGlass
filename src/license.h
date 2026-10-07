@@ -16,6 +16,10 @@ constexpr long long kStoreId = 0;
 constexpr long long kProductId = 0;
 constexpr const wchar_t* kBuyUrl = L"https://airglass.lemonsqueezy.com/";
 constexpr const wchar_t* kPrice = L"$2.99";
+// Refund policy (Steam-style): within kRefundDays of unlocking and fewer than kRefundSessions
+// mirroring sessions with Pro. AirGlass only counts and shows this; refunds are granted by hand.
+constexpr int kRefundDays = 14;
+constexpr int kRefundSessions = 10;
 
 struct Result {
     bool ok = false;           // the request reached Lemon Squeezy and was understood

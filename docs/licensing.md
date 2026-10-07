@@ -40,6 +40,18 @@ sequenceDiagram
 * Test it from the command line: `airglass_test license activate <key> <name>` and
   `airglass_test license validate <key> <instance-id>`.
 
+## Refunds
+
+The policy works like Steam's: a full refund **within 14 days of purchase, if Pro was used for fewer than 10
+mirroring sessions**. Statutory consumer rights apply regardless.
+
+* After a key is activated, AirGlass counts mirroring sessions (`[license] unlocked` and `sessions` in `config.ini`).
+  The tray menu shows `Refundable: 3 of 10 sessions used, 9 days left`, or `refund period over`.
+* The count lives only on the buyer's PC, so it's informational: refunds are granted by hand in the Lemon Squeezy
+  dashboard. Disabling the refunded key relocks AirGlass on its next start.
+* The limits are `license::kRefundDays` and `license::kRefundSessions` in [`src/license.h`](../src/license.h).
+  Loopback test sessions and personal `--pro` builds aren't counted.
+
 ## Open source and the GPL
 
 AirGlass is licensed under the **GNU GPL-3.0**, because it includes GPL-3.0 code from UxPlay/RPiPlay (the FairPlay

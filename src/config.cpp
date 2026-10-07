@@ -86,6 +86,8 @@ void Config::Load() {
     debugLog = ReadInt(path, L"app", L"debuglog", 0) != 0;
     licenseKey = WideToUtf8(Read(path, L"license", L"key"));
     licenseInstance = WideToUtf8(Read(path, L"license", L"instance"));
+    proUnlocked = _wtoi64(Read(path, L"license", L"unlocked").c_str());
+    proSessions = ReadInt(path, L"license", L"sessions", 0);
     if (dirty) Save();
 }
 
@@ -107,4 +109,6 @@ void Config::Save() const {
     Write(path, L"app", L"debuglog", debugLog ? L"1" : L"0");
     Write(path, L"license", L"key", Utf8ToWide(licenseKey));
     Write(path, L"license", L"instance", Utf8ToWide(licenseInstance));
+    Write(path, L"license", L"unlocked", std::to_wstring(proUnlocked));
+    Write(path, L"license", L"sessions", std::to_wstring(proSessions));
 }

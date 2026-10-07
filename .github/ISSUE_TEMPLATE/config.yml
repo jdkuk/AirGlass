@@ -8,7 +8,7 @@ contact_links:
     about: Ask a question or share an idea with the community.
   - name: 🧾 Purchases, refunds and license keys
     url: https://jdkuk.github.io/AirGlass/#refunds
-    about: Reply to your Lemon Squeezy receipt email. Refunds are available within 14 days.
+    about: Reply to your Lemon Squeezy receipt email. Refunds within 14 days and under 10 Pro sessions.
   - name: 🔒 Security vulnerability
     url: https://github.com/jdkuk/AirGlass/security/advisories/new
     about: Please report security problems privately.

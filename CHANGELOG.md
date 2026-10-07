@@ -5,6 +5,10 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Steam-style refund counter: after unlocking Pro, the tray menu shows how many mirroring sessions have been used
+  and whether a refund is still available (within 14 days and fewer than 10 sessions).
+
 ## [1.0.0] - 2026-10-07
 
 First public release.

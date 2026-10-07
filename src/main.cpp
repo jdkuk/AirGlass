@@ -256,7 +256,21 @@ void App::ShowTrayMenu() {
     if (pipeClients_ > 0) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Connected to TV Mode");
     if (glass_.Visible()) AppendMenuW(m, MF_STRING, kMenuShow, L"Show mirroring window");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    if (glass_.Pro()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"AirGlass Pro — thank you!");
+    if (glass_.Pro()) {
+        AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"AirGlass Pro — thank you!");
+        // Refund eligibility, shown honestly so buyers can quote it when asking for a refund.
+        if (!cfg_.licenseKey.empty() && cfg_.proUnlocked > 0) {
+            long long days = (_time64(nullptr) - cfg_.proUnlocked) / 86400;
+            int sessionsLeft = license::kRefundSessions - cfg_.proSessions;
+            wchar_t line[160];
+            if (days < license::kRefundDays && sessionsLeft > 0)
+                swprintf(line, 160, L"Refundable: %d of %d sessions used, %lld days left", cfg_.proSessions,
+                         license::kRefundSessions, (long long)license::kRefundDays - days);
+            else
+                swprintf(line, 160, L"Pro sessions: %d (refund period over)", cfg_.proSessions);
+            AppendMenuW(m, MF_STRING | MF_GRAYED, 0, line);
+        }
+    }
     else AppendMenuW(m, MF_STRING, kMenuPro, (std::wstring(L"Unlock windowed mode (Pro, ") + license::kPrice + L")…").c_str());
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), kMenuAutostart, L"Start with Windows");
     AppendMenuW(m, MF_STRING, kMenuLogs, L"Open log folder");
@@ -304,6 +318,11 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         std::unique_ptr<StartEvent> e(reinterpret_cast<StartEvent*>(l));
         if (curSid_ && curSid_ != e->sid) EmitStopped(curSid_, "takeover");
         glass_.BeginSession(e->sid, Utf8ToWide(e->name), e->model);
+        if (glass_.Pro() && !loopback_ && !cfg_.licenseKey.empty() && e->sid != curSid_) {
+            ++cfg_.proSessions;  // refund policy counter (see license::kRefundSessions)
+            cfg_.Save();
+            LOGI("license: Pro session %d", cfg_.proSessions);
+        }
         curSid_ = e->sid;
         curDevice_ = e->name;
         curModel_ = e->model;
@@ -384,6 +403,8 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         LOGW("license: no longer valid; back to the free edition");
         cfg_.licenseKey.clear();
         cfg_.licenseInstance.clear();
+        cfg_.proUnlocked = 0;
+        cfg_.proSessions = 0;
         cfg_.Save();
         glass_.SetPro(false);
         Balloon(L"AirGlass Pro is no longer active",
@@ -522,6 +543,8 @@ void App::ShowUpgrade(const std::wstring& reason) {
     if (license::ShowUpgradeDialog(owner, reason, &key, &instance)) {
         cfg_.licenseKey = key;
         cfg_.licenseInstance = instance;
+        cfg_.proUnlocked = _time64(nullptr);
+        cfg_.proSessions = 0;
         cfg_.Save();
         glass_.SetPro(true);
         LOGI("license: AirGlass Pro unlocked");
