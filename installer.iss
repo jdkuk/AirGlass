@@ -3,7 +3,7 @@
 ; Per-user install (no admin); one elevation prompt adds the inbound firewall rule.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.1"
+  #define AppVersion "1.0.2"
 #endif
 ; File version info must be numeric: "1.3.0-beta.1" -> "1.3.0".
 #define Dash Pos("-", AppVersion)

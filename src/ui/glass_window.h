@@ -68,6 +68,8 @@ public:
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
     std::function<void()> onUpgradeRequested;
+    // The picture inside the video frame changed size (black side bars detected or gone).
+    std::function<void(uint64_t sid, int width, int height)> onContentSize;
 
     // FrameSink (decoder threads)
     ID3D11Device* GpuDevice() override { return dev_.Get(); }
@@ -124,6 +126,9 @@ private:
     void RenderLocked();  // requires renderMu_
     void EnsureSwapSize(int w, int h);
     void ConvertVideoLocked();
+    void DrawConvertLocked(ID3D11RenderTargetView* rt, int w, int h, float u0, float uScale);
+    void ProbePillarboxLocked(int w, int h);
+    void ApplyAspect(float a);
     void RenderLabelLocked(const std::wstring& name, float dp);
     static Layout ComputeLayout(const RectF& slab, float fs, float dp, float aspect, int buttons, float boost);
     void UpdateTvBoost();
@@ -186,6 +191,16 @@ private:
     ComPtr<ID3D11Texture2D> rgb_;
     ComPtr<ID3D11ShaderResourceView> rgbSrv_;
     ComPtr<ID3D11RenderTargetView> rgbRtv_;
+    // Pillarbox crop (render thread). iPhones mirroring in portrait to a landscape display send
+    // landscape frames with black bars; a 3-row probe of each frame finds them and the convert pass
+    // crops them off, so the window takes the shape of the picture.
+    ComPtr<ID3D11Texture2D> probe_, probeStage_;
+    ComPtr<ID3D11RenderTargetView> probeRtv_;
+    int probeW_ = 0;
+    int cropSrcW_ = 0, cropSrcH_ = 0, cropX_ = 0, cropPending_ = -1;
+    double lastProbe_ = 0;
+    std::atomic<double> cropConfirmAt_{0};
+    std::atomic<bool> forceConvert_{false};
     int rgbW_ = 0, rgbH_ = 0;
 
     // Label
@@ -202,6 +217,7 @@ private:
     bool visible_ = false, dismissing_ = false, fullscreen_ = false, internalMove_ = false;
     bool pinned_ = false;
     float aspect_ = 0.4613f;
+    int vidW_ = 0, vidH_ = 0, contentW_ = 0;  // decoded frame size and the picture width inside it
     uint64_t sid_ = 0;
     RectF restoreSlab_;
     bool pendingShrink_ = false;

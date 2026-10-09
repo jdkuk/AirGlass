@@ -5,6 +5,13 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-09
+
+### Fixed
+- iPhone mirroring in portrait showed up as a wide landscape window with black bars: iOS sends portrait screens
+  inside a 1920x1080 frame. AirGlass now detects the side bars and crops them, so the window is phone-shaped again,
+  and it switches back to landscape when the phone rotates.
+
 ## [1.0.1] - 2026-10-09
 
 ### Added

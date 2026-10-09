@@ -1,7 +1,7 @@
 # Builds a release into dist\: the installer (Inno Setup 6) and the matching source zip
 # (the GPL requires the source to go with every copy sold).
 #   powershell -ExecutionPolicy Bypass -File package.ps1 [-Version 1.0.0] [-SkipBuild]
-param([string]$Version = '1.0.1', [switch]$SkipBuild)
+param([string]$Version = '1.0.2', [switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 

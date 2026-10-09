@@ -655,6 +655,12 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     glass_.onTvLayoutChanged = [this](bool byUser) { EmitLayout(byUser); };
     // Posted, so the dialog never opens inside the glass window's own input handling.
     glass_.onUpgradeRequested = [this] { PostMessageW(msgWnd_, kMsgUpgrade, 0, 0); };
+    glass_.onContentSize = [this](uint64_t sid, int w, int h) {
+        if (sid != curSid_) return;
+        curW_ = w;
+        curH_ = h;
+        Emit(JsonWriter().Str("event", "size").Int("session", (long long)curSid_).Int("width", w).Int("height", h).Done());
+    };
 
     loopback_ = loopback;
 #ifdef AIRGLASS_ALWAYS_PRO

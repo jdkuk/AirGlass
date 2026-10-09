@@ -5,7 +5,7 @@ cbuffer ConvertCB : register(b0)
     float4 cRow0;   // R = dot(row.xyz, yuv) + row.w
     float4 cRow1;
     float4 cRow2;
-    float4 cInfo;   // x: 0 = NV12 (Y + interleaved UV), 1 = planar (Y, U, V)
+    float4 cInfo;   // x: 0 = NV12 (Y + interleaved UV), 1 = planar (Y, U, V); y, z: source u offset, u scale (crop)
 };
 
 Texture2D<float>  tY  : register(t0);
@@ -20,8 +20,10 @@ struct VSOut
     float2 uv  : TEXCOORD0;
 };
 
-float4 PSConvert(VSOut i) : SV_Target
+float4 PSConvert(VSOut v) : SV_Target
 {
+    VSOut i = v;
+    i.uv.x = cInfo.y + v.uv.x * cInfo.z;
     float y = tY.SampleLevel(sConv, i.uv, 0);
     float2 c;
     if (cInfo.x < 0.5)

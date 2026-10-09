@@ -13,6 +13,7 @@ namespace {
 
 constexpr UINT kMsgSettled = WM_APP + 201;
 constexpr UINT kMsgDismissed = WM_APP + 202;
+constexpr UINT kMsgContentSize = WM_APP + 203;  // wParam: frame w | h << 16, lParam: picture w | h << 16
 constexpr UINT_PTR kTimerIdle = 7;
 constexpr UINT_PTR kTimerDebugFsIn = 8, kTimerDebugFsOut = 9;
 constexpr UINT_PTR kTimerTvPress = 10;
@@ -28,6 +29,43 @@ struct ComposeCB {
 struct ConvertCB {
     float row0[4], row1[4], row2[4], info[4];
 };
+
+// One probe of a frame: three rows (1/6, 1/2 and 5/6 down) as RGBA8. Returns the black bar width on
+// each side that the sample implies, given the current crop `cur`; -1 when the sample is all black.
+// A crop starts only for centred bars that leave a portrait picture (phones and tablets), and once
+// cropping, only picture showing up inside the bars (rotation to landscape) makes it smaller, so
+// dark app content next to the bars never narrows the window.
+int SampleBars(const uint8_t* data, size_t pitch, int w, int h, int cur) {
+    int first = w, last = -1;
+    for (int r = 0; r < 3; r++) {
+        const uint8_t* row = data + pitch * size_t(r);
+        for (int x = 0; x < w; x++) {
+            const uint8_t* p = row + size_t(x) * 4;
+            if (std::max({p[0], p[1], p[2]}) > 24) {
+                first = std::min(first, x);
+                break;
+            }
+        }
+        for (int x = w - 1; x >= 0; x--) {
+            const uint8_t* p = row + size_t(x) * 4;
+            if (std::max({p[0], p[1], p[2]}) > 24) {
+                last = std::max(last, x);
+                break;
+            }
+        }
+    }
+    if (last < 0) return -1;
+    int left = first, right = w - 1 - last, bar = std::min(left, right);
+    auto pillarbox = [&] {
+        float a = float(w - 2 * bar) / float(h);
+        return bar >= w / 20 && std::abs(left - right) <= 6 && a >= 0.42f && a < 1.0f;
+    };
+    // Crop 2 px into the picture: the encoder blurs the bar edge into a dark seam.
+    int crop = (bar + 2) & ~1;
+    if (cur == 0) return pillarbox() ? crop : 0;
+    if (bar < cur - 4) return pillarbox() ? crop : 0;
+    return cur;
+}
 
 void Set4(float* d, float a, float b, float c, float e) {
     d[0] = a;
@@ -431,6 +469,13 @@ void GlassWindow::RenderThread() {
     while (!quit_) {
         if (!needFrame_.exchange(false)) {
             wake_.Wait(100);
+            // A pillarbox change waits for a second look; re-probe even if the sender went quiet.
+            double due = cropConfirmAt_.load();
+            if (due > 0 && NowSeconds() >= due) {
+                cropConfirmAt_ = 0;
+                forceConvert_ = true;
+                needFrame_ = true;
+            }
             continue;
         }
         {
@@ -466,12 +511,25 @@ void GlassWindow::ConvertVideoLocked() {
     convertedSeq_ = frameSeq_.load();
     int w = srcW_, h = srcH_;
     if (!srcKind_ || w <= 0 || h <= 0) return;
-    if (!rgb_ || rgbW_ != w || rgbH_ != h) {
+    if (w != cropSrcW_ || h != cropSrcH_) {
+        cropSrcW_ = w;
+        cropSrcH_ = h;
+        cropX_ = 0;
+        cropPending_ = -1;
+        cropConfirmAt_ = 0;
+    }
+    double now = NowSeconds();
+    if (now - lastProbe_ >= 0.2) {
+        lastProbe_ = now;
+        ProbePillarboxLocked(w, h);
+    }
+    int cw = w - 2 * cropX_;
+    if (!rgb_ || rgbW_ != cw || rgbH_ != h) {
         rgb_.Reset();
         rgbSrv_.Reset();
         rgbRtv_.Reset();
         D3D11_TEXTURE2D_DESC td{};
-        td.Width = UINT(w);
+        td.Width = UINT(cw);
         td.Height = UINT(h);
         td.MipLevels = 0;
         td.ArraySize = 1;
@@ -486,12 +544,17 @@ void GlassWindow::ConvertVideoLocked() {
         rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
         dev_->CreateRenderTargetView(rgb_.Get(), &rd, rgbRtv_.GetAddressOf());
-        rgbW_ = w;
+        rgbW_ = cw;
         rgbH_ = h;
     }
+    DrawConvertLocked(rgbRtv_.Get(), cw, h, float(cropX_) / float(w), float(cw) / float(w));
+    ctx_->GenerateMips(rgbSrv_.Get());
+}
+
+void GlassWindow::DrawConvertLocked(ID3D11RenderTargetView* rt, int w, int h, float u0, float uScale) {
     ConvertCB cb{};
     ColorMatrix(srcColor_, cb);
-    Set4(cb.info, srcKind_ == 2 ? 1.0f : 0.0f, 0, 0, 0);
+    Set4(cb.info, srcKind_ == 2 ? 1.0f : 0.0f, u0, uScale, 0);
     D3D11_MAPPED_SUBRESOURCE m;
     if (SUCCEEDED(ctx_->Map(cbConvert_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
         std::memcpy(m.pData, &cb, sizeof(cb));
@@ -509,7 +572,6 @@ void GlassWindow::ConvertVideoLocked() {
         srvs[0] = swYSrv_.Get();
         srvs[1] = swUVSrv_.Get();
     }
-    ID3D11RenderTargetView* rt = rgbRtv_.Get();
     ctx_->OMSetRenderTargets(1, &rt, nullptr);
     D3D11_VIEWPORT vp{0, 0, float(w), float(h), 0, 1};
     ctx_->RSSetViewports(1, &vp);
@@ -528,7 +590,57 @@ void GlassWindow::ConvertVideoLocked() {
     ID3D11ShaderResourceView* none[4] = {};
     ctx_->PSSetShaderResources(0, 4, none);
     ctx_->OMSetRenderTargets(0, nullptr, nullptr);
-    ctx_->GenerateMips(rgbSrv_.Get());
+}
+
+void GlassWindow::ProbePillarboxLocked(int w, int h) {
+    if (w < 64 || h < 64) return;
+    if (!probe_ || probeW_ != w) {
+        probe_.Reset();
+        probeStage_.Reset();
+        probeRtv_.Reset();
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = UINT(w);
+        td.Height = 3;
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET;
+        if (FAILED(dev_->CreateTexture2D(&td, nullptr, probe_.GetAddressOf()))) return;
+        dev_->CreateRenderTargetView(probe_.Get(), nullptr, probeRtv_.GetAddressOf());
+        td.Usage = D3D11_USAGE_STAGING;
+        td.BindFlags = 0;
+        td.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(dev_->CreateTexture2D(&td, nullptr, probeStage_.GetAddressOf()))) {
+            probe_.Reset();
+            return;
+        }
+        probeW_ = w;
+    }
+    // A 3-pixel-tall render of the whole frame samples rows 1/6, 1/2 and 5/6 of the way down.
+    DrawConvertLocked(probeRtv_.Get(), w, 3, 0.0f, 1.0f);
+    ctx_->CopyResource(probeStage_.Get(), probe_.Get());
+    D3D11_MAPPED_SUBRESOURCE m;
+    if (FAILED(ctx_->Map(probeStage_.Get(), 0, D3D11_MAP_READ, 0, &m))) return;
+    int cand = SampleBars(static_cast<const uint8_t*>(m.pData), m.RowPitch, w, h, cropX_);
+    ctx_->Unmap(probeStage_.Get(), 0);
+    if (cand < 0 || cand == cropX_) {
+        cropPending_ = -1;
+        cropConfirmAt_ = 0;
+        return;
+    }
+    if (cropPending_ < 0 || std::abs(cand - cropPending_) > 2) {
+        cropPending_ = cand;  // confirm on the next probe, so rotation in-betweens never stick
+        cropConfirmAt_ = NowSeconds() + 0.25;
+        return;
+    }
+    cropX_ = cand;
+    cropPending_ = -1;
+    cropConfirmAt_ = 0;
+    int cw = w - 2 * cropX_;
+    LOGI("video: %s -> picture %dx%d in a %dx%d frame", cropX_ ? "black side bars" : "no side bars", cw, h, w, h);
+    PostMessageW(hwnd_, kMsgContentSize, WPARAM(MAKELONG(w, h)), MAKELPARAM(cw, h));
 }
 
 void GlassWindow::RenderLabelLocked(const std::wstring& name, float dp) {
@@ -693,7 +805,7 @@ void GlassWindow::RenderLocked() {
     {
         std::lock_guard<std::recursive_mutex> g(gpuLock_);
         EnsureSwapSize(s.winW, s.winH);
-        if (frameSeq_.load() != convertedSeq_) ConvertVideoLocked();
+        if (frameSeq_.load() != convertedSeq_ || forceConvert_.exchange(false)) ConvertVideoLocked();
         if (s.labelDirty || !label_) RenderLabelLocked(s.labelName, s.dp);
         float lw = float(labelW_), lh = float(labelH_);
         float ls = std::min(1.0f, L.video.W() * 0.86f / std::max(lw, 1.0f));
@@ -1032,6 +1144,11 @@ void GlassWindow::RememberSize() {
 void GlassWindow::BeginSession(uint64_t sid, const std::wstring& deviceName, const std::string& model) {
     sid_ = sid;
     sessionLive_ = true;
+    vidW_ = vidH_ = contentW_ = 0;
+    {
+        std::lock_guard<std::recursive_mutex> g(gpuLock_);
+        cropSrcW_ = cropSrcH_ = 0;  // the renderer re-detects side bars for the new sender
+    }
     bool keepHiding = visible_ && tvHiding_ && tv_ && tvDefaults_.mode == TvLayout::Hidden;
     {
         std::lock_guard<std::mutex> lk(stateMu_);
@@ -1162,7 +1279,13 @@ void GlassWindow::EndSession(uint64_t sid) {
 
 void GlassWindow::SetVideoSize(uint64_t sid, int w, int h) {
     if (sid != sid_ || w <= 0 || h <= 0 || !sessionLive_) return;
-    float a = float(w) / float(h);
+    if (w != vidW_ || h != vidH_) contentW_ = w;  // a new frame size starts uncropped (as does the renderer)
+    vidW_ = w;
+    vidH_ = h;
+    ApplyAspect(float(contentW_) / float(h));
+}
+
+void GlassWindow::ApplyAspect(float a) {
     bool changed = std::fabs(a - aspect_) > 0.004f;
     aspect_ = a;
     {
@@ -1806,6 +1929,13 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             hasAnimTarget_ = false;
             RECT t = shrinkTo_.ToRECT();
             if (!fullscreen_ && !SameRect(t, winRect_)) SetWindowRectSync(shrinkTo_);
+        }
+        return 0;
+    case kMsgContentSize:
+        if (sessionLive_ && LOWORD(w) == vidW_ && HIWORD(w) == vidH_) {
+            contentW_ = LOWORD(l);
+            ApplyAspect(float(contentW_) / float(vidH_));
+            if (onContentSize) onContentSize(sid_, contentW_, vidH_);
         }
         return 0;
     case kMsgDismissed:
