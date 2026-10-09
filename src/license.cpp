@@ -1,5 +1,7 @@
 #include "license.h"
 
+#include "ui/dialog_template.h"
+
 #include <commctrl.h>
 #include <shellapi.h>
 #include <winhttp.h>
@@ -177,41 +179,6 @@ INT_PTR CALLBACK DialogProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return FALSE;
 }
 
-// In-memory dialog template (no .rc dialog resource needed).
-class Template {
-public:
-    void Dialog(const wchar_t* title, short cx, short cy, WORD items) {
-        Dword(DS_SETFONT | DS_MODALFRAME | DS_CENTER | DS_SHELLFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU);
-        Dword(0);
-        Word(items);
-        Word(0), Word(0), Word(WORD(cx)), Word(WORD(cy));
-        Word(0), Word(0);  // no menu, default class
-        Str(title);
-        Word(9);
-        Str(L"Segoe UI");
-    }
-    void Item(WORD cls, const wchar_t* text, int id, short x, short y, short cx, short cy, DWORD style) {
-        while (buf_.size() % 4) buf_.push_back(0);
-        Dword(style | WS_CHILD | WS_VISIBLE);
-        Dword(0);
-        Word(WORD(x)), Word(WORD(y)), Word(WORD(cx)), Word(WORD(cy));
-        Word(WORD(id));
-        Word(0xFFFF), Word(cls);
-        Str(text);
-        Word(0);
-    }
-    const DLGTEMPLATE* Get() const { return reinterpret_cast<const DLGTEMPLATE*>(buf_.data()); }
-
-private:
-    void Word(WORD v) { buf_.insert(buf_.end(), reinterpret_cast<uint8_t*>(&v), reinterpret_cast<uint8_t*>(&v) + 2); }
-    void Dword(DWORD v) { Word(LOWORD(v)), Word(HIWORD(v)); }
-    void Str(const wchar_t* s) {
-        do Word(*s);
-        while (*s++);
-    }
-    std::vector<uint8_t> buf_;
-};
-
 }  // namespace
 
 Result Activate(const std::string& key, const std::string& instanceName) {
@@ -241,16 +208,16 @@ bool ShowUpgradeDialog(HWND owner, const std::wstring& reason, std::string* key,
     std::wstring buy = std::wstring(L"Buy AirGlass Pro (") + kPrice + L")…";
     std::wstring pitch = std::wstring(L"AirGlass Pro unlocks the mirroring window: move it, resize it, zoom, keep it "
                                       L"on top or float it in a corner. One-time ") + kPrice + L", no subscription.";
-    Template t;
+    ui::Template t;
     t.Dialog(L"AirGlass Pro", 260, 134, 8);
-    t.Item(0x0082, L"", kIdReason, 10, 8, 240, 18, SS_LEFT);
-    t.Item(0x0082, pitch.c_str(), -1, 10, 28, 240, 26, SS_LEFT);
-    t.Item(0x0080, buy.c_str(), kIdBuy, 10, 58, 130, 15, BS_PUSHBUTTON | WS_TABSTOP);
-    t.Item(0x0082, L"Already bought it? Paste the license key from your receipt email:", -1, 10, 82, 240, 10, SS_LEFT);
-    t.Item(0x0081, L"", kIdKey, 10, 94, 240, 13, ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP);
-    t.Item(0x0082, L"", kIdStatus, 10, 113, 136, 18, SS_LEFT);
-    t.Item(0x0080, L"Activate", IDOK, 150, 113, 50, 15, BS_DEFPUSHBUTTON | WS_TABSTOP);
-    t.Item(0x0080, L"Not now", IDCANCEL, 204, 113, 46, 15, BS_PUSHBUTTON | WS_TABSTOP);
+    t.Item(ui::kStatic, L"", kIdReason, 10, 8, 240, 18, SS_LEFT);
+    t.Item(ui::kStatic, pitch.c_str(), -1, 10, 28, 240, 26, SS_LEFT);
+    t.Item(ui::kButton, buy.c_str(), kIdBuy, 10, 58, 130, 15, BS_PUSHBUTTON | WS_TABSTOP);
+    t.Item(ui::kStatic, L"Already bought it? Paste the license key from your receipt email:", -1, 10, 82, 240, 10, SS_LEFT);
+    t.Item(ui::kEdit, L"", kIdKey, 10, 94, 240, 13, ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP);
+    t.Item(ui::kStatic, L"", kIdStatus, 10, 113, 136, 18, SS_LEFT);
+    t.Item(ui::kButton, L"Activate", IDOK, 150, 113, 50, 15, BS_DEFPUSHBUTTON | WS_TABSTOP);
+    t.Item(ui::kButton, L"Not now", IDCANCEL, 204, 113, 46, 15, BS_PUSHBUTTON | WS_TABSTOP);
     DialogState st;
     st.reason = reason;
     INT_PTR rc = DialogBoxIndirectParamW(GetModuleHandleW(nullptr), t.Get(), owner, DialogProc, LPARAM(&st));

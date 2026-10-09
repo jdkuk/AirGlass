@@ -4,8 +4,8 @@
 1 24 "AirGlass.manifest"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION 1,0,1,0
+ PRODUCTVERSION 1,0,1,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -15,11 +15,11 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "AirGlass"
       VALUE "FileDescription", "AirGlass - AirPlay screen mirroring receiver"
-      VALUE "FileVersion", "1.0.0"
+      VALUE "FileVersion", "1.0.1"
       VALUE "InternalName", "AirGlass"
       VALUE "OriginalFilename", "AirGlass.exe"
       VALUE "ProductName", "AirGlass"
-      VALUE "ProductVersion", "1.0.0"
+      VALUE "ProductVersion", "1.0.1"
     END
   END
   BLOCK "VarFileInfo"

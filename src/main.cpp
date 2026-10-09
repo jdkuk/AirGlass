@@ -17,6 +17,7 @@
 #include "net/netutil.h"
 #include "ui/glass_window.h"
 #include "ui/icon.h"
+#include "ui/welcome.h"
 
 namespace {
 
@@ -34,6 +35,7 @@ constexpr UINT kMsgLicenseRevoked = WM_APP + 11;
 constexpr UINT_PTR kTimerNowPlaying = 1;
 constexpr UINT_PTR kTimerTvGrace = 2;
 constexpr UINT_PTR kTimerNpDebounce = 3;
+constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer has registered our tray icon
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
@@ -129,6 +131,36 @@ void SetAutostart(bool on) {
     RegCloseKey(k);
 }
 
+// Windows 11 parks new tray icons in the hidden overflow. On first run, mark ours as shown next to
+// the clock (the per-icon setting Explorer keeps under NotifyIconSettings). Returns false while
+// Explorer has not created the entry yet. ExecutablePath may start with a known-folder GUID instead
+// of the folder path, so the match is on the file name plus whichever form the path takes.
+bool PromoteTrayIcon() {
+    const std::wstring exe = ExePath();
+    wchar_t local[MAX_PATH] = L"";
+    GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
+    std::wstring asGuid = exe;
+    if (*local && _wcsnicmp(exe.c_str(), local, wcslen(local)) == 0)
+        asGuid = L"{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}" + exe.substr(wcslen(local));
+    HKEY root;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Control Panel\\NotifyIconSettings", 0, KEY_READ | KEY_SET_VALUE, &root) != ERROR_SUCCESS)
+        return false;
+    bool found = false;
+    wchar_t sub[256];
+    for (DWORD i = 0; !found; i++) {
+        DWORD n = 256;
+        if (RegEnumKeyExW(root, i, sub, &n, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+        wchar_t path[1024];
+        DWORD size = sizeof(path);
+        if (RegGetValueW(root, sub, L"ExecutablePath", RRF_RT_REG_SZ, nullptr, path, &size) != ERROR_SUCCESS) continue;
+        if (_wcsicmp(path, exe.c_str()) != 0 && _wcsicmp(path, asGuid.c_str()) != 0) continue;
+        DWORD one = 1;
+        found = RegSetKeyValueW(root, sub, L"IsPromoted", REG_DWORD, &one, sizeof(one)) == ERROR_SUCCESS;
+    }
+    RegCloseKey(root);
+    return found;
+}
+
 class App {
 public:
     int Run(HINSTANCE inst, bool background, bool loopback);
@@ -165,6 +197,7 @@ private:
     ControlPipe pipe_;
     std::string name_;
     bool loopback_ = false, upgradeOpen_ = false;
+    int promoteTries_ = 0;
 
     // Mirroring session as reported to TV Mode.
     uint64_t curSid_ = 0;
@@ -391,6 +424,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             npPending_ = false;
             EmitNowPlaying();
         }
+        if (w == kTimerPromoteTray && (PromoteTrayIcon() || ++promoteTries_ >= 20)) KillTimer(msgWnd_, kTimerPromoteTray);
         if (w == kTimerTvGrace) {
             KillTimer(msgWnd_, kTimerTvGrace);
             if (pipeClients_ == 0) glass_.SetTvControlled(false);
@@ -705,13 +739,22 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
                     L"Could not open the Bonjour/mDNS port (UDP 5353). Devices may not see this PC.");
         }
     }
-    if (!loopback && (!cfg_.welcomed || !background)) {
+    if (!loopback && !cfg_.welcomed) {
+        // First run (normally launched by the installer): pin the tray icon and say hello properly.
+        cfg_.welcomed = true;
+        cfg_.Save();
+        SetTimer(msgWnd_, kTimerPromoteTray, 1000, nullptr);
+        if (background) {
+            Balloon(L"AirGlass is ready",
+                    L"On your iPhone, iPad or Mac open Screen Mirroring and choose “" + Utf8ToWide(name_) + L"”.");
+        } else {
+            bool autostart = AutostartEnabled();
+            ui::ShowWelcome(nullptr, iconBig_, Utf8ToWide(name_), &autostart);
+            if (autostart != AutostartEnabled()) SetAutostart(autostart);
+        }
+    } else if (!loopback && !background) {
         Balloon(L"AirGlass is ready",
                 L"On your iPhone, iPad or Mac open Screen Mirroring and choose “" + Utf8ToWide(name_) + L"”.");
-        if (!cfg_.welcomed) {
-            cfg_.welcomed = true;
-            cfg_.Save();
-        }
     }
 
     MSG msg;

@@ -5,9 +5,17 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-09
+
 ### Added
+- Welcome window on first launch after installing: confirms AirGlass is running, explains how to connect from an
+  iPhone, iPad or Mac, points to the tray icon by the clock, and offers "Start AirGlass with Windows".
+- The tray icon is shown next to the clock by default on Windows 11 instead of being hidden in the overflow menu.
 - Steam-style refund counter: after unlocking Pro, the tray menu shows how many mirroring sessions have been used
   and whether a refund is still available (within 14 days and fewer than 10 sessions).
+
+### Changed
+- AirGlass Pro is now on sale through Lemon Squeezy; the app and website link straight to the checkout.
 
 ## [1.0.0] - 2026-10-07
 
