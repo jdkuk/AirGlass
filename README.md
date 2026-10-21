@@ -19,7 +19,7 @@ and play AirPlay music in true lossless quality.
 [**Download**](https://github.com/jdkuk/AirGlass/releases/latest) ·
 [**Website**](https://jdkuk.github.io/AirGlass/) ·
 [How to AirPlay to Windows](https://jdkuk.github.io/AirGlass/airplay-to-windows/) ·
-[Get Pro ($2.99)](https://jdkuk.github.io/AirGlass/#pricing) ·
+[Get Pro ($9.99)](https://jdkuk.github.io/AirGlass/#pricing) ·
 [Docs](docs/README.md) ·
 [Report a bug](https://github.com/jdkuk/AirGlass/issues/new/choose)
 
@@ -76,7 +76,7 @@ engine, no account, no analytics. Everything stays on your local network.
 
 ## 🆓 Free and Pro
 
-| | **Free** | **Pro** · $2.99 one-time |
+| | **Free** | **Pro** · $9.99 one-time |
 |---|:---:|:---:|
 | Screen Mirroring from iPhone, iPad and Mac | ✅ full screen | ✅ full screen **or** floating window |
 | Lossless AirPlay music | ✅ | ✅ |

@@ -15,7 +15,7 @@ namespace license {
 constexpr long long kStoreId = 492472;
 constexpr long long kProductId = 1425951;
 constexpr const wchar_t* kBuyUrl = L"https://airglasspc.lemonsqueezy.com/checkout/buy/0e38c6a7-1639-4409-ad59-49f0d62c9bfb";
-constexpr const wchar_t* kPrice = L"$2.99";
+constexpr const wchar_t* kPrice = L"$9.99";
 // Refund policy (Steam-style): within kRefundDays of unlocking and fewer than kRefundSessions
 // mirroring sessions with Pro. AirGlass only counts and shows this; refunds are granted by hand.
 constexpr int kRefundDays = 14;

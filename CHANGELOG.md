@@ -5,6 +5,11 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-10-20
+
+### Changed
+- AirGlass Pro is now $9.99 (about £7.99; buyers see their local currency), still a one-time purchase.
+
 ## [1.0.2] - 2026-10-09
 
 ### Fixed

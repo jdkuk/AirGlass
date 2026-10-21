@@ -2,7 +2,7 @@
 
 ## Free and Pro
 
-| | Free | Pro ($2.99 one-time) |
+| | Free | Pro ($9.99 one-time) |
 |---|---|---|
 | Screen Mirroring | full screen | full screen or floating glass window |
 | Lossless AirPlay music | ✅ | ✅ |
