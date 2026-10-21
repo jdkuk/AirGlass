@@ -18,6 +18,7 @@ and play AirPlay music in true lossless quality.
 
 [**Download**](https://github.com/jdkuk/AirGlass/releases/latest) ·
 [**Website**](https://jdkuk.github.io/AirGlass/) ·
+[How to AirPlay to Windows](https://jdkuk.github.io/AirGlass/airplay-to-windows/) ·
 [Get Pro ($2.99)](https://jdkuk.github.io/AirGlass/#pricing) ·
 [Docs](docs/README.md) ·
 [Report a bug](https://github.com/jdkuk/AirGlass/issues/new/choose)

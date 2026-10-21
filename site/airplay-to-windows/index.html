@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to AirPlay to Windows 11 and 10 (iPhone, iPad, Mac) · AirGlass</title>
+<meta name="description" content="Windows can't receive AirPlay on its own. Here's how to mirror your iPhone, iPad or Mac to a Windows 11 or 10 PC and play AirPlay music on it, free, in about a minute.">
+<link rel="canonical" href="https://jdkuk.github.io/AirGlass/airplay-to-windows/">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080d">
+<link rel="icon" href="../icon.png">
+<meta property="og:title" content="How to AirPlay to Windows 11 and 10">
+<meta property="og:description" content="Mirror your iPhone, iPad or Mac to a Windows PC and play AirPlay music on it, free.">
+<meta property="og:image" content="https://jdkuk.github.io/AirGlass/og.png">
+<meta property="og:url" content="https://jdkuk.github.io/AirGlass/airplay-to-windows/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="../pages.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "How to AirPlay to a Windows 11 or 10 PC",
+  "description": "Mirror an iPhone, iPad or Mac to a Windows PC, and play AirPlay music on it, using the free AirGlass receiver.",
+  "totalTime": "PT2M",
+  "tool": [{"@type": "HowToTool", "name": "AirGlass (free AirPlay receiver for Windows)"}],
+  "step": [
+    {"@type": "HowToStep", "name": "Install an AirPlay receiver", "text": "Download AirGlass from github.com/jdkuk/AirGlass/releases/latest and run the installer. It starts in the system tray and launches with Windows."},
+    {"@type": "HowToStep", "name": "Join the same network", "text": "Make sure the iPhone, iPad or Mac and the PC are on the same home network. Wi-Fi and Ethernet can be mixed through the same router."},
+    {"@type": "HowToStep", "name": "Open Screen Mirroring", "text": "On iPhone or iPad, open Control Center and tap Screen Mirroring. On a Mac, click Control Center, then Screen Mirroring."},
+    {"@type": "HowToStep", "name": "Choose your PC", "text": "Pick your PC's name from the list. The screen appears on the PC within a second."},
+    {"@type": "HowToStep", "name": "Play music over AirPlay (optional)", "text": "In Music, Spotify or any audio app, tap the AirPlay button and choose your PC to play music through the PC's speakers in lossless quality."}
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "Does Windows 11 support AirPlay?", "acceptedAnswer": {"@type": "Answer", "text": "No. Windows has Miracast built in, but not AirPlay, so an iPhone won't see a Windows PC until you install an AirPlay receiver app such as AirGlass."}},
+    {"@type": "Question", "name": "Is there a free way to AirPlay to Windows?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. AirGlass is free and open source, with no watermark and no time limit. An optional one-time Pro upgrade adds a movable, resizable floating window."}},
+    {"@type": "Question", "name": "Why doesn't my PC show up in Screen Mirroring?", "acceptedAnswer": {"@type": "Answer", "text": "The usual causes are being on different networks, a guest network or router client isolation, a VPN on the phone or PC, or Windows Firewall blocking the receiver. Put both devices on the same home network and allow the app through the firewall."}},
+    {"@type": "Question", "name": "Can I AirPlay Netflix or YouTube to a Windows PC?", "acceptedAnswer": {"@type": "Answer", "text": "Screen Mirroring shows whatever is on your screen, but protected video such as Netflix mirrors as black because the app blocks it. AirGlass doesn't support the separate 'send a video link' kind of AirPlay."}}
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../icon.png" alt="">AirGlass</a>
+    <div class="navlinks">
+      <a class="hide-sm" href="../compare/">Compare</a>
+      <a class="hide-sm" href="https://github.com/jdkuk/AirGlass">GitHub</a>
+      <a class="btn primary" href="https://github.com/jdkuk/AirGlass/releases/latest">Download free</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+<article class="wrap narrow">
+  <div class="kicker">Guide</div>
+  <h1>How to AirPlay to Windows 11 and 10</h1>
+  <p class="lede">Windows can't receive AirPlay on its own, so your iPhone won't see your PC. Install a small receiver app and your PC shows up in Screen Mirroring like an Apple TV. It takes about a minute.</p>
+
+  <figure>
+    <img src="../media/desktop.jpg" srcset="../media/desktop.jpg 1600w, ../media/desktop@2x.jpg 3200w" sizes="(max-width: 760px) 100vw, 728px" alt="An iPhone and a Mac mirrored to a Windows desktop in floating glass windows" width="1600" height="900">
+    <figcaption>An iPhone and a Mac mirrored to Windows with AirGlass.</figcaption>
+  </figure>
+
+  <h2>Why Windows needs an app for AirPlay</h2>
+  <p>AirPlay is Apple's way of sending a screen or music to another device. Windows supports Miracast, a different standard, and has no AirPlay receiver built in. An AirPlay receiver app fills the gap: it announces your PC on the network so your iPhone, iPad or Mac can find it, then shows the picture and plays the sound.</p>
+
+  <h2>Mirror your iPhone or iPad to a Windows PC</h2>
+  <ol class="steps">
+    <li><strong>Install AirGlass on the PC.</strong> <a href="https://github.com/jdkuk/AirGlass/releases/latest">Download the installer</a> and run it. AirGlass is free, open source and needs no account. It sits in the tray by the clock and starts with Windows, so it's always ready.</li>
+    <li><strong>Put both on the same network.</strong> Your phone on Wi-Fi and your PC on Wi-Fi or Ethernet is fine, as long as they're behind the same router.</li>
+    <li><strong>Open Screen Mirroring.</strong> Swipe down from the top-right corner of your iPhone or iPad to open Control Center, then tap <em>Screen Mirroring</em>.</li>
+    <li><strong>Choose your PC.</strong> Your PC's name appears in the list. Tap it and your screen appears on the PC within a second. Turn the phone sideways and the window turns with it.</li>
+  </ol>
+  <p>To stop, open Control Center again and tap <em>Stop Mirroring</em>.</p>
+
+  <h2>Mirror a Mac to a Windows PC</h2>
+  <p>On the Mac, click <em>Control Center</em> in the menu bar, then <em>Screen Mirroring</em>, and choose your PC. Your Mac's display appears on the PC in its own window.</p>
+
+  <h2>Play music from your iPhone on your PC</h2>
+  <p>You don't need to mirror the screen to play music. In Music, Spotify, a podcast app or any app with an AirPlay button, tap <em>AirPlay</em> and choose your PC. The sound plays through the PC's speakers or headphones. With AirGlass, AirPlay music arrives as Apple Lossless and is played bit-for-bit, so it sounds exactly as the phone sent it.</p>
+
+  <div class="cta">
+    <p>Free, no watermark, no time limit.</p>
+    <a class="btn primary" href="https://github.com/jdkuk/AirGlass/releases/latest">Download AirGlass</a>
+  </div>
+
+  <h2>If your PC doesn't show up</h2>
+  <h3>Different networks</h3>
+  <p>Guest Wi-Fi networks and mesh systems with "client isolation" or "AP isolation" switched on stop devices from seeing each other. Join your main network on both, or turn isolation off in the router settings.</p>
+  <h3>A VPN is on</h3>
+  <p>A VPN on the phone or the PC can hide local devices. Pause it while you mirror.</p>
+  <h3>Windows Firewall</h3>
+  <p>The receiver needs to be allowed through the firewall on private networks. AirGlass sets this up during install. If you said no to the prompt, open <em>Windows Security › Firewall &amp; network protection › Allow an app through firewall</em> and tick AirGlass.</p>
+  <h3>Windows warns about the installer</h3>
+  <p>Windows is cautious about new apps from small developers. Click <em>More info</em>, then <em>Run anyway</em>. AirGlass's code is public and every release is built in the open by GitHub Actions.</p>
+  <p class="note">Still stuck? <a href="https://github.com/jdkuk/AirGlass/issues">Open a support request</a> and say what you see.</p>
+
+  <h2>Questions</h2>
+  <details><summary>Does Windows 11 support AirPlay?</summary><p>No. Windows has Miracast built in, but not AirPlay, so an iPhone won't see a Windows PC until you install an AirPlay receiver.</p></details>
+  <details><summary>Is there a free way to AirPlay to Windows?</summary><p>Yes. AirGlass is free and open source, with no watermark and no time limit. The free edition mirrors full screen; an optional one-time Pro upgrade adds a floating window you can move, resize, zoom and keep on top.</p></details>
+  <details><summary>Can I AirPlay Netflix or YouTube to my PC?</summary><p>Screen Mirroring shows whatever is on your screen. Protected video, such as Netflix, mirrors as black because the app blocks it. AirGlass doesn't support the separate "send a video link" kind of AirPlay.</p></details>
+  <details><summary>Does it work in 4K?</summary><p>AirGlass mirrors at up to 1080p and about 60 fps. Phones asked for 4K drop to around 28 fps, so 1080p looks and feels better.</p></details>
+  <details><summary>Which AirPlay receiver should I use?</summary><p>See <a href="../compare/">AirGlass compared with AirServer, LonelyScreen, Reflector and 5KPlayer</a>.</p></details>
+</article>
+</main>
+
+<footer>
+  <div class="wrap">© 2026 AirGlass · <a href="../">Home</a> · <a href="../compare/">Compare AirPlay receivers</a> · <a href="https://github.com/jdkuk/AirGlass">Source on GitHub</a><br>
+  AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc. AirGlass is not affiliated with or endorsed by Apple.</div>
+</footer>
+</body>
+</html>
