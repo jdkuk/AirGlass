@@ -33,6 +33,18 @@ and play AirPlay music in true lossless quality.
 
 <p align="center"><sub>Real AirGlass frames, not mockups: the glass bezel, controls and shadow are rendered live on the GPU.</sub></p>
 
+### 📸 Real screenshots
+
+AirGlass in use on a Windows desktop, mirroring a real iPhone over AirPlay.
+
+<p align="center">
+  <img src="docs/images/real-iphone-home-screen.png" alt="AirGlass on Windows mirroring an iPhone home screen in a floating glass window" width="46%">
+  &nbsp;
+  <img src="docs/images/real-iphone-game.png" alt="AirGlass on Windows mirroring an iPhone game in landscape in a floating glass window" width="46%">
+</p>
+
+<p align="center"><sub>Left: iPhone home screen, portrait. Right: an iPhone game, landscape. Captured on Windows 11, October 2026.</sub></p>
+
 ---
 
 ## ✨ Highlights
