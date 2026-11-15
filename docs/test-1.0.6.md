@@ -171,3 +171,14 @@ From another PC or phone on the LAN, open `http://<pc>:7000/status` ([details](s
 | 3 | `GET /status?since=<seq>` in one tab, then stop the iPad. | The request answers at once with `mirror` = the iPhone and one entry in `sessions`. |
 | 4 | With both mirroring, set the PC's screen to turn off after 1 minute; wait 2 minutes. Stop one device and wait again. Stop both. | The display stays on while either device mirrors (log: `display: kept awake for mirroring`); it may sleep only after both stopped (`display: may sleep again`). |
 | 5 | `[window] full=1`, Pro: mirror from two devices. | Both windows open full screen; <kbd>Esc</kbd> floats each one on its own. |
+
+## Keyboard focus when a window opens
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Click the desktop (or any other app, e.g. Notepad), then start mirroring from the iPhone. | The glass window opens with the keyboard focus: press <kbd>S</kbd>, <kbd>D</kbd>, <kbd>Z</kbd>, <kbd>O</kbd> straight away, without clicking it, and each works. Nothing is typed into Notepad. Log: `ui: focus ok`. |
+| 2 | Free edition (full screen): the same. | <kbd>Esc</kbd> and <kbd>S</kbd> (Pro dialog) work without a click. |
+| 3 | Mirror, and while it is open start mirroring from the same iPhone again (or another device takes over the window). | The window doesn't grab the focus again; whatever you were typing into keeps it. |
+| 4 | Pro, two devices: with the first window focused, start the second device. | The second window opens beside it but the first keeps the focus (and the sound). |
+| 5 | TV Mode connected: start mirroring. | The window floats without taking the focus (no `ui: focus` line). |
+| 6 | If row 1 fails: note the `ui: focus denied (the foreground window is "…")` line. | |

@@ -63,6 +63,9 @@ All notable changes to AirGlass are documented here. The format is based on
   drawing, region zoom, OBS mode and the allow-list. The trial's welcome balloon names the new shortcuts.
 
 ### Fixed
+- A mirroring window now gets the keyboard focus when it opens, so its keys (S, R, D, Z, O…) work without a click.
+  Windows refuses the focus to a background program, so the keys used to go to the desktop. Not under TV Mode, not
+  when a new device takes over a window already on screen, and not away from the other mirroring window.
 - A mirroring session now keeps the display awake, and wakes a display that had idled off when it starts
   (`[display] keepawake` / `wake` turn this off). With two devices, the display stays awake until both have stopped.
 

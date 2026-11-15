@@ -755,6 +755,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         int wi = e->window > 0 && e->window < kWindows && Win(e->window) ? e->window : 0;
         GlassWindow& g = *Win(wi);
         uint64_t before = live_[wi].sid;
+        bool opening = !g.Visible();  // not a takeover of a window already on screen
         // Taken over: this window's previous session (the free edition's one session, or in Pro the oldest of two
         // when a third device starts), and in the free edition any other session too.
         for (int j = 0; j < kWindows; ++j) {
@@ -800,8 +801,15 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         tvWin_ = wi;  // TV Mode follows the most recent session
         // The new session has the sound (the server gave it), unless the other window has the keyboard focus.
         active_ = wi;
+        bool otherFocused = false;
         for (int j = 0; j < kWindows; ++j)
-            if (j != wi && Win(j) && Win(j)->SessionLive() && GetForegroundWindow() == Win(j)->Hwnd()) FocusWindow(j);
+            if (j != wi && Win(j) && Win(j)->SessionLive() && GetForegroundWindow() == Win(j)->Hwnd()) {
+                otherFocused = true;
+                FocusWindow(j);
+            }
+        // A window that opens for a new session takes the keyboard focus, so S, R, D, Z and O work without a click;
+        // not under TV Mode (the TV launcher keeps it), in tests, or away from the other mirroring window.
+        if (opening && !loopback_ && !otherFocused && !g.TvControlled() && g.Visible()) g.TakeFocus();
         LOGI("sessions: session %llu (\"%s\") in window %d; %d mirroring at once", (unsigned long long)e->sid,
              e->name.c_str(), wi + 1, LiveCount());
         PublishStatus();

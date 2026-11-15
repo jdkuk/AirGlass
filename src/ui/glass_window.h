@@ -49,6 +49,9 @@ public:
     bool SessionLive() const { return sessionLive_; }
     bool Visible() const { return visible_; }
     void BringToFront();
+    // Gives the window the keyboard focus (a window that just opened for a new session), so its keys work without
+    // a click. Never under TV Mode or in hidden test runs. Logs "ui: focus ok|denied".
+    void TakeFocus();
     Options CurrentOptions() const { return opt_; }
 
     // Free edition: every session opens full screen, and leaving it (Esc, F, double-click, the

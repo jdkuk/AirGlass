@@ -2007,6 +2007,41 @@ void GlassWindow::BringToFront() {
     SetForegroundWindow(hwnd_);
 }
 
+// Windows lets only the foreground process hand out the focus, and AirGlass is a background (tray) process, so a
+// plain SetForegroundWindow is refused and the keys keep going to whatever had them (often the desktop). Joining
+// the foreground window's input queue for the moment of the switch (AttachThreadInput) is accepted; if even that is
+// refused, an empty input event makes this process the last to have sent input, which lifts the lock.
+void GlassWindow::TakeFocus() {
+    if (!visible_ || tv_ || tvHidden_ || !snapDir_.empty()) return;
+    if (IsIconic(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    HWND fg = GetForegroundWindow();
+    if (fg != hwnd_) {
+        DWORD me = GetCurrentThreadId();
+        DWORD fgThread = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+        bool attached = fgThread && fgThread != me && AttachThreadInput(me, fgThread, TRUE);
+        BringWindowToTop(hwnd_);
+        SetForegroundWindow(hwnd_);
+        SetFocus(hwnd_);
+        if (attached) AttachThreadInput(me, fgThread, FALSE);
+        if (GetForegroundWindow() != hwnd_) {
+            INPUT in{};
+            in.type = INPUT_MOUSE;
+            in.mi.dwFlags = MOUSEEVENTF_MOVE;  // zero-length move: nothing visible happens
+            SendInput(1, &in, sizeof(in));
+            SetForegroundWindow(hwnd_);
+            SetFocus(hwnd_);
+        }
+    }
+    HWND now = GetForegroundWindow();
+    if (now == hwnd_) {
+        LOGI("ui: focus ok");
+    } else {
+        char title[128] = "";
+        if (now) GetWindowTextA(now, title, sizeof(title));
+        LOGW("ui: focus denied (the foreground window is \"%s\")", title);
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // TV Mode
 
