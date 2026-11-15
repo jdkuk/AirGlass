@@ -400,7 +400,7 @@ void AirPlayServer::Connection::Info(const Request& req, Response& resp) {
     d.Set("macAddress", Plist::String(ri.DeviceId()));
     d.Set("pk", Plist::Data(ri.edPub, 32));
     d.Set("features", Plist::Int(ri.features));
-    d.Set("name", Plist::String(ri.name));
+    d.Set("name", Plist::String(srv_->Name()));
     d.Set("pi", Plist::String(ri.pi));
     d.Set("vv", Plist::Int(2));
     d.Set("statusFlags", Plist::Int(68));
@@ -943,9 +943,20 @@ void AirPlayServer::Connection::StopStreams() {
 AirPlayServer::AirPlayServer() = default;
 AirPlayServer::~AirPlayServer() { Stop(); }
 
+void AirPlayServer::SetName(const std::string& name) {
+    std::lock_guard<std::mutex> lk(nameMu_);
+    name_ = name;
+}
+
+std::string AirPlayServer::Name() {
+    std::lock_guard<std::mutex> lk(nameMu_);
+    return name_;
+}
+
 bool AirPlayServer::Start(const ReceiverInfo& info, uint16_t preferredPort, FrameSink* video, AudioOutput* audio,
                           Events ev) {
     info_ = info;
+    SetName(info.name);
     video_ = video;
     audio_ = audio;
     ev_ = std::move(ev);

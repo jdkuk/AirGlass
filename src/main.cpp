@@ -18,6 +18,7 @@
 #include "net/netutil.h"
 #include "ui/glass_window.h"
 #include "ui/icon.h"
+#include "ui/rename.h"
 #include "ui/welcome.h"
 
 namespace {
@@ -35,12 +36,13 @@ constexpr UINT kMsgUpgrade = WM_APP + 10;     // free edition: a Pro feature was
 constexpr UINT kMsgLicenseRevoked = WM_APP + 11;
 constexpr UINT kMsgTrialEnded = WM_APP + 12;
 constexpr UINT kMsgRecordStopped = WM_APP + 13;  // lParam: std::wstring* (finished file), recorder thread
+constexpr UINT kMsgRenamed = WM_APP + 14;        // lParam: std::string* (the new name, checked on the network)
 constexpr UINT_PTR kTimerNowPlaying = 1;
 constexpr UINT_PTR kTimerTvGrace = 2;
 constexpr UINT_PTR kTimerNpDebounce = 3;
 constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer has registered our tray icon
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
-constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108;
+constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 struct StartEvent {
@@ -80,6 +82,19 @@ GlassWindow::TvLayout ParseLayout(const JsonObject& o, GlassWindow::TvLayout l) 
     auto m = o.find("margin");
     if (m != o.end() && m->second.type == JsonValue::Type::Number) l.margin = std::clamp(int(m->second.n), 0, 400);
     return l;
+}
+
+// Receiver names must be unique on the network (mDNS), e.g. not a speaker group with the PC's name.
+std::string UniqueReceiverName(const std::string& base, const std::vector<std::string>& taken) {
+    auto used = [&](const std::string& n) {
+        for (auto& t : taken)
+            if (_stricmp(t.c_str(), n.c_str()) == 0) return true;
+        return false;
+    };
+    if (!used(base)) return base;
+    std::string candidate = base + " PC";
+    for (int i = 2; used(candidate) && i < 20; ++i) candidate = base + " PC " + std::to_string(i);
+    return candidate;
 }
 
 const char* LayoutModeName(int mode) { return mode == 1 ? "full" : mode == 2 ? "hidden" : "float"; }
@@ -173,9 +188,14 @@ private:
     static LRESULT CALLBACK StaticProc(HWND h, UINT m, WPARAM w, LPARAM l);
     LRESULT Proc(HWND h, UINT m, WPARAM w, LPARAM l);
     void AddTrayIcon();
+    void UpdateTrayTip();
     void ShowTrayMenu();
     void Balloon(const std::wstring& title, const std::wstring& text);
     ReceiverInfo BuildIdentity();
+    bool StartMdns();
+    // "Rename this PC…" (UI thread): the dialog, then a network check off the UI thread, then ApplyName.
+    void RenameReceiver();
+    void ApplyName(const std::string& name);
 
     // TV Mode control pipe (UI thread).
     void OnPipeCommand(const std::string& line);
@@ -207,6 +227,9 @@ private:
     MdnsResponder mdns_;
     ControlPipe pipe_;
     std::string name_;
+    ReceiverInfo ri_;  // as advertised (mDNS) and served (/info)
+    std::thread renameThread_;
+    bool renaming_ = false;
     bool loopback_ = false, upgradeOpen_ = false;
     int promoteTries_ = 0;
 
@@ -280,6 +303,63 @@ void App::AddTrayIcon() {
     Shell_NotifyIconW(NIM_SETVERSION, &nid);
 }
 
+void App::UpdateTrayTip() {
+    NOTIFYICONDATAW nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = msgWnd_;
+    nid.uID = 1;
+    nid.uFlags = NIF_TIP | NIF_SHOWTIP;
+    std::wstring tip = L"AirGlass — Screen Mirroring as “" + Utf8ToWide(name_) + L"”";
+    wcsncpy(nid.szTip, tip.c_str(), 127);
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+bool App::StartMdns() {
+    std::vector<MdnsResponder::Service> services;
+    services.push_back({ri_.name, "_airplay._tcp", server_.Port(), ri_.AirPlayTxt()});
+    services.push_back({ri_.MacHex() + "@" + ri_.name, "_raop._tcp", server_.Port(), ri_.RaopTxt()});
+    std::string host;
+    for (char c : DefaultReceiverName()) host += (isalnum(static_cast<unsigned char>(c)) || c == '-') ? c : '-';
+    return mdns_.Start(host + "-AirGlass", services);  // a restart says goodbye for the old name first
+}
+
+void App::RenameReceiver() {
+    if (renaming_ || cfg_.nameManaged) return;
+    std::wstring name = Utf8ToWide(cfg_.name);
+    HWND owner = glass_.Visible() ? glass_.Hwnd() : msgWnd_;
+    if (!ui::ShowRenameDialog(owner, iconBig_, &name)) return;
+    std::string wanted = SanitizeReceiverName(WideToUtf8(name));
+    if (wanted.empty() || wanted == cfg_.name) return;
+    if (loopback_) {
+        ApplyName(wanted);
+        return;
+    }
+    // Browsing the network blocks for about a second: do it off the UI thread.
+    renaming_ = true;
+    if (renameThread_.joinable()) renameThread_.join();
+    renameThread_ = std::thread([wanted, own = cfg_.name, target = msgWnd_] {
+        std::vector<std::string> taken;
+        for (auto& t : MdnsResponder::BrowseReceiverNames(1.2))
+            if (_stricmp(t.c_str(), own.c_str()) != 0) taken.push_back(t);  // our own answer, under the old name
+        PostMessageW(target, kMsgRenamed, 0, reinterpret_cast<LPARAM>(new std::string(UniqueReceiverName(wanted, taken))));
+    });
+}
+
+void App::ApplyName(const std::string& name) {
+    renaming_ = false;
+    if (name == cfg_.name) return;
+    LOGI("receiver: renamed \"%s\" -> \"%s\"", cfg_.name.c_str(), name.c_str());
+    cfg_.name = name;
+    cfg_.Save();
+    name_ = loopback_ ? name + " (loopback test)" : name;
+    ri_.name = name;
+    server_.SetName(name);
+    if (!loopback_ && !StartMdns()) LOGE("receiver: mDNS restart failed after renaming");
+    UpdateTrayTip();
+    EmitState();
+    Balloon(L"Renamed", L"This PC now appears as “" + Utf8ToWide(name) + L"” in Screen Mirroring.");
+}
+
 void App::Balloon(const std::wstring& title, const std::wstring& text) {
     NOTIFYICONDATAW nid{};
     nid.cbSize = sizeof(nid);
@@ -297,6 +377,8 @@ void App::ShowTrayMenu() {
     HMENU m = CreatePopupMenu();
     std::wstring head = L"Receiving as “" + Utf8ToWide(name_) + L"”";
     AppendMenuW(m, MF_STRING | MF_GRAYED, 0, head.c_str());
+    if (cfg_.nameManaged) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Name set by your organisation");
+    else AppendMenuW(m, MF_STRING | (renaming_ ? MF_GRAYED : 0), kMenuRename, L"&Rename this PC…");
     if (pipeClients_ > 0) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Connected to TV Mode");
     if (glass_.Visible()) AppendMenuW(m, MF_STRING, kMenuShow, L"Show mirroring window");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -356,6 +438,7 @@ void App::ShowTrayMenu() {
     case kMenuAutostart: SetAutostart(!AutostartEnabled()); break;
     case kMenuLogs: ShellExecuteW(nullptr, L"open", AppDataDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case kMenuShow: glass_.BringToFront(); break;
+    case kMenuRename: RenameReceiver(); break;
     case kMenuPro: ShowUpgrade(L"Pro adds the floating glass window, screenshots and recording."); break;
     case kMenuShot:
         if (glass_.Pro()) TakeScreenshot();
@@ -526,6 +609,11 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         std::unique_ptr<std::wstring> file(reinterpret_cast<std::wstring*>(l));
         Balloon(L"Recording saved", L"The device rotated, so the recording was finished. Saved to Videos\\AirGlass as " +
                                         file->substr(file->find_last_of(L'\\') + 1) + L". Press R to record again.");
+        return 0;
+    }
+    case kMsgRenamed: {
+        std::unique_ptr<std::string> name(reinterpret_cast<std::string*>(l));
+        ApplyName(*name);
         return 0;
     }
     case kMsgLicenseRevoked:
@@ -835,18 +923,9 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     };
 
     if (!loopback) {
-        // Receiver names must be unique on the network (mDNS) - e.g. a speaker group with the PC's name.
         std::vector<std::string> taken = MdnsResponder::BrowseReceiverNames(1.2);
-        auto used = [&](const std::string& n) {
-            for (auto& t : taken)
-                if (_stricmp(t.c_str(), n.c_str()) == 0) return true;
-            return false;
-        };
-        std::string candidate = cfg_.name;
-        if (used(candidate)) {
-            std::string base = cfg_.name;
-            candidate = base + " PC";
-            for (int i = 2; used(candidate) && i < 20; ++i) candidate = base + " PC " + std::to_string(i);
+        std::string candidate = UniqueReceiverName(cfg_.name, taken);
+        if (candidate != cfg_.name) {
             LOGI("receiver name \"%s\" is already used by another device here; using \"%s\"", cfg_.name.c_str(),
                  candidate.c_str());
             cfg_.name = candidate;
@@ -856,7 +935,9 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
         LOGI("%zu other AirPlay receivers on the network", taken.size());
     }
 
-    ReceiverInfo ri = BuildIdentity();
+    ri_ = BuildIdentity();
+    const ReceiverInfo& ri = ri_;
+    if (cfg_.nameManaged) LOGI("receiver: name set machine-wide in %s", WideToUtf8(MachineConfigPath()).c_str());
     LOGI("receiver \"%s\" id %s, display %dx%d@%d maxFPS %d", ri.name.c_str(), ri.DeviceId().c_str(), ri.width,
          ri.height, ri.refresh, ri.maxFps);
 
@@ -887,12 +968,7 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
 
     AddTrayIcon();
     if (!loopback) {
-        std::vector<MdnsResponder::Service> services;
-        services.push_back({ri.name, "_airplay._tcp", server_.Port(), ri.AirPlayTxt()});
-        services.push_back({ri.MacHex() + "@" + ri.name, "_raop._tcp", server_.Port(), ri.RaopTxt()});
-        std::string host;
-        for (char c : DefaultReceiverName()) host += (isalnum(static_cast<unsigned char>(c)) || c == '-') ? c : '-';
-        if (!mdns_.Start(host + "-AirGlass", services)) {
+        if (!StartMdns()) {
             LOGE("mDNS responder failed to start; the receiver will not be discoverable");
             Balloon(L"AirGlass: discovery problem",
                     L"Could not open the Bonjour/mDNS port (UDP 5353). Devices may not see this PC.");
@@ -935,6 +1011,7 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
         mediaCv_.notify_all();
     }
     if (mediaThread_.joinable()) mediaThread_.join();
+    if (renameThread_.joinable()) renameThread_.join();
     mdns_.Stop();
     server_.Stop();
     audio_.Stop();

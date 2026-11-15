@@ -5,6 +5,7 @@
 | [Troubleshooting](troubleshooting.md) | Users | The PC doesn't appear, no sound, stutter, firewall, VPNs |
 | [Licensing & editions](licensing.md) | Users, developers | Free vs Pro, license keys, offline use, the GPL |
 | [Privacy](privacy.md) | Users | Exactly what leaves your PC |
+| [Deployment](deployment.md) | Users, IT | Renaming the PC, a machine-wide receiver name |
 | [Architecture](architecture.md) | Developers | Threads, D3D11 glass renderer, AirPlay protocol walkthrough |
 | [Building](building.md) | Developers | Toolchain, dependencies, build switches |
 | [Development & testing](development.md) | Developers | Loopback sender, headless snapshots, debug environment variables |
@@ -16,7 +17,7 @@
 ```
 src/
   main.cpp              app shell: tray, config, edition, AirPlay events -> window, control pipe
-  config.*              %LOCALAPPDATA%\AirGlass\config.ini
+  config.*              %LOCALAPPDATA%\AirGlass\config.ini (+ %ProgramData%\AirGlass\airglass.ini)
   license.*             AirGlass Pro: Lemon Squeezy activation/validation, upgrade dialog
   control_pipe.*        \\.\pipe\AirGlass.Control (JSON lines) + tiny JSON reader/writer
   crypto/               X25519/Ed25519 pairing, AES-CTR/CBC, SHA-512, FairPlay glue
@@ -35,6 +36,7 @@ src/
     resampler.*         128-tap windowed-sinc resampler
   ui/
     glass_window.*      DirectComposition window, spring animations, input, TV placement
+    rename.*            "Rename this PC…" dialog
     compose.hlsl        the Liquid Glass compositor shader
     convert.hlsl        NV12 -> RGB
 tools/                  airglass_test (loopback sender + self-tests), capture scripts, fetch-deps, brand renders

@@ -86,7 +86,9 @@ key=…
 instance=…
 ```
 
-* `name` is what senders show. `deviceid` and `[receiver] key` are the receiver's persistent identity, so don't share them.
+* `name` is what senders show (tray → *Rename this PC…* sets it; `%ProgramData%\AirGlass\airglass.ini` can override
+  it for the whole machine, see [Deployment](deployment.md)). `deviceid` and `[receiver] key` are the receiver's
+  persistent identity, so don't share them.
 * `[video]` values of `0` mean automatic: the monitor's shape, capped at 1920×1080, refresh capped at 120 Hz.
 * `[license]` holds the AirGlass Pro key and its activation id.
 * Don't put comments on the same line as a value: Windows' INI reader keeps them as part of the value.

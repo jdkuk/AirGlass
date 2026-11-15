@@ -5,6 +5,14 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.6] - unreleased
+
+### Added
+- Rename this PC: right-click the tray icon → **Rename this PC…** to name the receiver after the room. Devices see
+  the new name straight away, without restarting AirGlass.
+- A machine-wide receiver name for IT departments: `name=` under `[receiver]` in
+  `%ProgramData%\AirGlass\airglass.ini` wins over the user's setting ([Deployment](docs/deployment.md)).
+
 ## [1.0.5] - 2026-11-15
 
 ### Added

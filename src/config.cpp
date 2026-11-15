@@ -36,19 +36,42 @@ std::string DefaultReceiverName() {
     return WideToUtf8(host);
 }
 
+std::string SanitizeReceiverName(std::string n) {
+    for (char& c : n)
+        if (c == '.' || static_cast<unsigned char>(c) < 0x20) c = ' ';
+    if (n.size() > 40) {
+        size_t cut = 40;
+        while (cut > 0 && (static_cast<unsigned char>(n[cut]) & 0xC0) == 0x80) --cut;  // whole UTF-8 characters
+        n.resize(cut);
+    }
+    size_t b = n.find_first_not_of(' '), e = n.find_last_not_of(' ');
+    return b == std::string::npos ? std::string() : n.substr(b, e - b + 1);
+}
+
+std::wstring MachineConfigPath() {
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return L"";
+    return std::wstring(buf) + L"\\AirGlass\\airglass.ini";
+}
+
 void Config::Load() {
     path = AppDataDir() + L"\\config.ini";
     bool dirty = false;
 
-    name = WideToUtf8(Read(path, L"receiver", L"name"));
+    name = SanitizeReceiverName(WideToUtf8(Read(path, L"receiver", L"name")));
     if (name.empty()) {
-        name = DefaultReceiverName();
+        name = SanitizeReceiverName(DefaultReceiverName());
+        if (name.empty()) name = "AirGlass";
         dirty = true;
     }
-    // Dots would split the DNS-SD instance label; keep names short.
-    for (char& c : name)
-        if (c == '.') c = ' ';
-    if (name.size() > 40) name.resize(40);
+    // A name deployed for the whole machine wins and is never written to the user's config.ini.
+    std::wstring machine = MachineConfigPath();
+    std::string managed = machine.empty() ? "" : SanitizeReceiverName(WideToUtf8(Read(machine, L"receiver", L"name")));
+    if (!managed.empty()) {
+        name = managed;
+        nameManaged = true;
+    }
 
     std::vector<uint8_t> v;
     if (HexDecode(WideToUtf8(Read(path, L"receiver", L"deviceid")), v) && v.size() == 6) {
@@ -94,7 +117,7 @@ void Config::Load() {
 }
 
 void Config::Save() const {
-    Write(path, L"receiver", L"name", Utf8ToWide(name));
+    if (!nameManaged) Write(path, L"receiver", L"name", Utf8ToWide(name));
     Write(path, L"receiver", L"deviceid", Utf8ToWide(HexEncode(mac, 6, true)));
     Write(path, L"receiver", L"key", Utf8ToWide(HexEncode(seed, 32)));
     Write(path, L"receiver", L"pi", Utf8ToWide(pi));

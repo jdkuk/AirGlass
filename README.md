@@ -92,6 +92,7 @@ engine, no account, no analytics. Everything stays on your local network.
 |---|:---:|:---:|
 | Screen Mirroring from iPhone, iPad and Mac | ✅ full screen | ✅ full screen **or** floating window |
 | Lossless AirPlay music | ✅ | ✅ |
+| Name the receiver after the room (tray → *Rename this PC…*) | ✅ | ✅ |
 | Move, resize, smooth zoom | | ✅ |
 | Keep on top, corner float | | ✅ |
 | Screenshots: PNG of the glass window + the picture on the clipboard (<kbd>S</kbd>) | | ✅ |
@@ -116,7 +117,8 @@ checked once online, and after that Pro also works offline. [How licensing works
 3. **Music:** in Music (or any audio app) tap the **AirPlay** button and pick your PC for lossless playback.
 
 The receiver uses your PC's name. If another AirPlay device already has that name, AirGlass adds " PC".
-To rename it, set `name=` under `[receiver]` in `%LOCALAPPDATA%\AirGlass\config.ini` and restart AirGlass.
+To name it after the room, right-click the tray icon → **Rename this PC…**. Your devices see the new name straight away.
+IT departments can set the name for the whole machine: see [Deployment](docs/deployment.md).
 
 <details>
 <summary><b>⌨️ Window controls</b> (Pro)</summary>
@@ -204,6 +206,7 @@ Needs Windows 10/11, Python 3 and the Windows 10/11 SDK (for `fxc`). See [Buildi
 | [Development & testing](docs/development.md) | Loopback sender, headless snapshots, debug switches |
 | [Control pipe API](docs/control-pipe.md) | Drive AirGlass from another app (JSON over a named pipe) |
 | [Licensing & editions](docs/licensing.md) | Free vs Pro, Lemon Squeezy keys, the GPL |
+| [Deployment](docs/deployment.md) | Naming each PC, a machine-wide name for IT departments |
 | [Troubleshooting](docs/troubleshooting.md) | Discovery, firewall, VPNs, audio |
 | [Privacy](docs/privacy.md) | What leaves your PC (almost nothing) |
 | [Releasing](docs/releasing.md) | Versioning, tags, the release workflow |

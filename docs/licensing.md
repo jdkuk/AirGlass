@@ -6,6 +6,7 @@
 |---|---|---|
 | Screen Mirroring | full screen | full screen or floating glass window |
 | Lossless AirPlay music | ✅ | ✅ |
+| Rename this PC (tray menu), machine-wide name ([Deployment](deployment.md)) | ✅ | ✅ |
 | Move, resize, zoom, keep on top, corner float | | ✅ |
 | Screenshots (<kbd>S</kbd>): PNG to Pictures\AirGlass + the picture on the clipboard | | ✅ |
 | Recording (<kbd>R</kbd>): MP4 to Videos\AirGlass, the sender's H.264 copied as-is, no sound | | ✅ |

@@ -6,6 +6,7 @@
 struct Config {
     std::wstring path;
     std::string name;          // receiver name shown on the sender
+    bool nameManaged = false;  // set machine-wide in %ProgramData%\AirGlass\airglass.ini (docs/deployment.md)
     uint8_t mac[6]{};          // persistent device id
     uint8_t seed[32]{};        // Ed25519 identity seed
     std::string pi, displayUuid;
@@ -26,3 +27,8 @@ struct Config {
 };
 
 std::string DefaultReceiverName();
+// A usable receiver name: no dots (they would split the DNS-SD instance label) or control characters,
+// trimmed, at most 40 bytes. Empty if nothing is left.
+std::string SanitizeReceiverName(std::string name);
+// %ProgramData%\AirGlass\airglass.ini: machine-wide settings an IT department deploys ("" if unknown).
+std::wstring MachineConfigPath();

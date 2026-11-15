@@ -52,6 +52,9 @@ public:
     bool Start(const ReceiverInfo& info, uint16_t preferredPort, FrameSink* video, AudioOutput* audio, Events ev);
     void Stop();
     uint16_t Port() const { return port_; }
+    // Live rename: /info answers with the new name (mDNS is re-announced by the caller).
+    void SetName(const std::string& name);
+    std::string Name();
     // Drop the active mirroring sender (user closed the window).
     void DisconnectMirror();
     // Current music session; false (and out.active = false) when there is none.
@@ -71,6 +74,8 @@ private:
     void Reap();
 
     ReceiverInfo info_;
+    std::mutex nameMu_;
+    std::string name_;  // info_.name, renamable while running (guarded by nameMu_)
     FrameSink* video_ = nullptr;
     AudioOutput* audio_ = nullptr;
     Events ev_;
