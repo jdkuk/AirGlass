@@ -86,6 +86,10 @@ public:
     // Remote control of the music sender: playpause, play, pause, next, prev, volume (0..1).
     // Blocks for up to ~2 s. Returns "" on success or "no-session" / "no-remote" / "failed".
     std::string MediaCommand(const std::string& action, double value);
+    // The same for a mirroring sender, through its own DACP remote (Pro media keys): playpause, next, prev, volumeup,
+    // volumedown. MirrorHasRemote: the sender's remote-control service was found.
+    std::string MirrorMediaCommand(uint64_t sid, const std::string& action);
+    bool MirrorHasRemote(uint64_t sid);
     // PIN pairing. When required, a sender must have paired with a code shown on the PC (now, or earlier with a
     // key in SetPairedKeys) before it may set up a session; /info advertises it too (mDNS is the caller's).
     // Senders that ask for a code by themselves get one either way.
@@ -108,6 +112,7 @@ private:
     FrameSink* ClaimMirror(const std::shared_ptr<Connection>& c, int* window);
     void ReleaseMirror(Connection* c);
     void ApplyFocusVolume(const std::shared_ptr<Connection>& c);
+    std::shared_ptr<Connection> MirrorConnection(uint64_t sid);
     void ClaimAudio(const std::shared_ptr<Connection>& c);
     void ReleaseAudio(Connection* c);
     void Reap();

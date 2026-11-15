@@ -164,6 +164,7 @@ public:
     float VolumeDb() const { return volumeDb_; }
     void SnapshotNowPlaying(NowPlaying& out);
     std::string Media(const std::string& action, double value);
+    bool HasRemote() const { return dacp_.Available(); }
 
 private:
     enum class PairState { Initial, Setup, Handshake, Finished };
@@ -1110,6 +1111,7 @@ std::string AirPlayServer::Connection::Media(const std::string& action, double v
     else if (action == "pause") cmd = "pause";
     else if (action == "next") cmd = "nextitem";
     else if (action == "prev" || action == "previous") cmd = "previtem";
+    else if (action == "volumeup" || action == "volumedown") cmd = action;  // a step on the sender's own volume
     else if (action == "volume") {
         double v = std::clamp(value, 0.0, 1.0);
         float db = v < 0.001 ? -144.0f : float(-30.0 + 30.0 * v);
@@ -1490,6 +1492,25 @@ std::string AirPlayServer::MediaCommand(const std::string& action, double value)
     }
     if (!c) return "no-session";
     return c->Media(action, value);
+}
+
+std::shared_ptr<AirPlayServer::Connection> AirPlayServer::MirrorConnection(uint64_t sid) {
+    std::lock_guard<std::mutex> lk(mu_);
+    for (const MirrorClaim& c : mirrors_)
+        if (c.id == sid) return c.conn.lock();
+    return nullptr;
+}
+
+std::string AirPlayServer::MirrorMediaCommand(uint64_t sid, const std::string& action) {
+    std::shared_ptr<Connection> c = MirrorConnection(sid);
+    if (!c) return "no-session";
+    if (action == "volume") return "failed";  // an absolute volume is for music sessions
+    return c->Media(action, 0);
+}
+
+bool AirPlayServer::MirrorHasRemote(uint64_t sid) {
+    std::shared_ptr<Connection> c = MirrorConnection(sid);
+    return c && c->HasRemote();
 }
 
 void AirPlayServer::DisconnectMirror(uint64_t sid) {

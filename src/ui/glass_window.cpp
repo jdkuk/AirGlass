@@ -2629,6 +2629,15 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     if (cmd == 7) ClearDrawing(true);
 }
 
+void GlassWindow::MediaKey(const char* action) {
+    if (!sessionLive_) return;
+    if (!pro_) {
+        if (onUpgradeRequested) onUpgradeRequested(kProMedia);
+        return;
+    }
+    if (onMediaKey) onMediaKey(action);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Window procedure
 
@@ -3032,6 +3041,16 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             return 0;
         case 'O':  // Pro: OBS mode
             ToggleObsMode();
+            return 0;
+        case VK_SPACE:  // Pro: play / pause on the sender (draw mode uses no Space; a held key doesn't repeat it)
+            if (!(l & (1 << 30))) MediaKey("playpause");
+            return 0;
+        case VK_RIGHT:
+        case VK_LEFT:
+        case VK_UP:
+        case VK_DOWN:  // Pro: Ctrl+arrows: next / previous track, sender volume up / down (these repeat)
+            if (GetKeyState(VK_CONTROL) >= 0) break;
+            MediaKey(w == VK_RIGHT ? "next" : w == VK_LEFT ? "prev" : w == VK_UP ? "volumeup" : "volumedown");
             return 0;
         case 'R':  // Pro: start/stop recording
             if (!sessionLive_) return 0;

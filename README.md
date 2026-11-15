@@ -100,6 +100,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | OBS mode: a chroma-key green window for OBS Window Capture (<kbd>O</kbd>) | | ✅ |
 | Region zoom: drag a rectangle to zoom into part of the picture (<kbd>Z</kbd>) | | ✅ |
 | Draw on screen: pen, arrow, highlighter and eraser on the mirrored picture, with a toolbar (<kbd>D</kbd>) | | ✅ |
+| Media controls for the mirroring device: play/pause, next, previous, volume (<kbd>Space</kbd>, <kbd>Ctrl</kbd>+arrows, tray), when it offers AirPlay remote control | | ✅ |
 | Allow-list: ask on the PC before a new device connects (tray → *Ask before new devices connect*) | | ✅ |
 | Require a code: a new device must type the 4-digit code the PC shows (tray → *Require a code to connect*) | | ✅ |
 | Two devices at once, each in its own window (a new device takes over in the free edition; a third one takes over the oldest in Pro) | one at a time | ✅ two |
@@ -141,6 +142,9 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 | <kbd>P</kbd> (or <kbd>T</kbd>) | keep on top |
 | <kbd>S</kbd> | screenshot: a PNG to Pictures\AirGlass and the picture on the clipboard |
 | <kbd>R</kbd> | start / stop recording to Videos\AirGlass |
+| <kbd>Space</kbd> | play / pause on the device (when it offers AirPlay remote control) |
+| <kbd>Ctrl</kbd>+<kbd>→</kbd> / <kbd>Ctrl</kbd>+<kbd>←</kbd> | next / previous track |
+| <kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>Ctrl</kbd>+<kbd>↓</kbd> | the device's volume up / down |
 | <kbd>Tab</kbd> | two devices at once: go to the other window (its sound plays) |
 | <kbd>O</kbd> | OBS mode: chroma-key green round the picture, no glass, window title "AirGlass (OBS)" |
 | <kbd>D</kbd> | draw on the picture: drag to draw · <kbd>P</kbd> pen · <kbd>A</kbd> arrow · <kbd>H</kbd> highlighter · <kbd>E</kbd> eraser (drag over strokes) · <kbd>1</kbd>–<kbd>4</kbd> red, yellow, green, blue · <kbd>Backspace</kbd> undo · <kbd>C</kbd> clear · <kbd>D</kbd> or <kbd>Esc</kbd> stops drawing. The toolbar on the picture has the same, plus ✓ to stop drawing |
@@ -148,8 +152,9 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 
 Rotating the device morphs the window between portrait and landscape. Audio plays through the default Windows output,
 and the device's volume buttons control it. With two devices mirroring, each has its own window; the keys, the tray's
-tools and the sound follow the window used last (tray → *Switch to “…”*). Tray icon (right-click): *Rename this PC…*, *OBS mode*, *Zoom into a region*,
-*Draw on screen*, *Ask before new devices connect*,
+tools and the sound follow the window used last (tray → *Switch to “…”*). Tray icon (right-click): *Rename this PC…*,
+*Save screenshot*, *Start/Stop recording*, *OBS mode*, *Zoom into a region*, *Draw on screen*, *Media controls* (when
+the device offers them), *Open screenshots folder*, *Ask before new devices connect*,
 *Forget allowed and blocked devices*, *Require a code to connect*, *Forget paired devices*, *Start with Windows*,
 *Open log folder*, *Quit*.
 

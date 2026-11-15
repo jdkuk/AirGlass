@@ -83,10 +83,10 @@ public:
     // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
     // kProObs (OBS mode), kProZoom (region zoom), kProDraw (drawing on the picture); kProAllowList (asking before
     // new devices connect) and kProPin (requiring a code to connect) come from the tray menu; kProTwoDevices (a
-    // second device took over the session) from the app.
+    // second device took over the session) from the app; kProMedia (media keys) from the window or the tray.
     enum ProFeature {
         kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4, kProDraw = 5, kProAllowList = 6,
-        kProPin = 7, kProTwoDevices = 8
+        kProPin = 7, kProTwoDevices = 8, kProMedia = 9
     };
     std::function<void(int feature)> onUpgradeRequested;
 
@@ -99,6 +99,9 @@ public:
     // Pro: MP4 recording of the mirrored stream (R key or tray menu -> onRecordToggle).
     Recorder& Rec() { return recorder_; }
     std::function<void()> onRecordToggle;
+    // Pro: media keys for the sender (its AirPlay remote control): Space "playpause", Ctrl+Right "next",
+    // Ctrl+Left "prev", Ctrl+Up "volumeup", Ctrl+Down "volumedown".
+    std::function<void(const char* action)> onMediaKey;
     // The picture inside the video frame changed size (black side bars detected or gone).
     std::function<void(uint64_t sid, int width, int height)> onContentSize;
 
@@ -263,6 +266,7 @@ private:
     void UpdateControls();
     void ActivateButton(int b);
     void ShowContextMenu(POINT screenPt);
+    void MediaKey(const char* action);
 
     // GPU
     ComPtr<ID3D11Device> dev_;

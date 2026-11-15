@@ -64,7 +64,7 @@ Artwork is written atomically, so a new `artworkSeq` means a new file.
 | `{"cmd":"highlight","button":"corner"}` | focus a capsule button (`full`, `corner`, `size`, `stop`; `null` hides the capsule) |
 | `{"cmd":"press","button":"corner"}` | press animation (the client then sends the resulting `layout`/`stop`) |
 | `{"cmd":"stop"}` | end the mirroring session |
-| `{"cmd":"media","action":"playpause","rid":"m3"}` | `play`, `pause`, `playpause`, `next`, `prev`, or `volume` with `"value":0..1` |
+| `{"cmd":"media","action":"playpause","rid":"m3"}` | `play`, `pause`, `playpause`, `next`, `prev`, `volumeup`, `volumedown` (a step on the sender), or `volume` with `"value":0..1` |
 
 Geometry is AirGlass's job. Sizes `s`, `m` and `l` are equal-area: a 16:9 picture gets 28 / 40 / 55 % of the screen width,
 and other shapes get the same area. Corners are `br`, `bl`, `tr` and `tl`, and the corner is kept when the device rotates.

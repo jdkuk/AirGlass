@@ -27,6 +27,11 @@ All notable changes to AirGlass are documented here. The format is based on
   (pen, arrow, highlighter, eraser, the four colours, undo, clear all and ✓ to stop) makes drawing work with the
   mouse alone. It sits along the bottom of the picture, or down its side for a portrait phone; clicks on it never
   draw, and screenshots and OBS mode don't show it. <kbd>Backspace</kbd> now also takes back an erase or a clear.
+- Pro: media controls for the mirroring device. <kbd>Space</kbd> plays or pauses, <kbd>Ctrl</kbd>+<kbd>→</kbd> /
+  <kbd>Ctrl</kbd>+<kbd>←</kbd> skip to the next / previous track and <kbd>Ctrl</kbd>+<kbd>↑</kbd> /
+  <kbd>Ctrl</kbd>+<kbd>↓</kbd> turn the device's volume up / down, through its AirPlay remote control (DACP, as with
+  music). The tray has the same under **Media controls** while the device offers it; a device that doesn't gets a
+  balloon saying so. TV Mode's `media` command also takes `volumeup` and `volumedown`.
 - Pro: allow-list. Tray → **Ask before new devices connect**: when a device AirGlass doesn't know starts mirroring
   or audio, the PC asks "Allow … to use AirGlass?" with Allow once, Always allow or Block. No answer within 30 s
   turns it away; a turned-away device gets a clean refusal and shows an error. Answers are kept under `[devices]` in

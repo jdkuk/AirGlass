@@ -190,3 +190,19 @@ From another PC or phone on the LAN, open `http://<pc>:7000/status` ([details](s
 | 4 | Pro, two devices: with the first window focused, start the second device. | The second window opens beside it but the first keeps the focus (and the sound). |
 | 5 | TV Mode connected: start mirroring. | The window floats without taking the focus (no `ui: focus` line). |
 | 6 | If row 1 fails: note the `ui: focus denied (the foreground window is "…")` line. | |
+
+## Media controls (Pro, <kbd>Space</kbd>, <kbd>Ctrl</kbd>+arrows)
+
+Keep the log open. Mirror from the iPhone and wait for `dacp: remote control available` (a few seconds).
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Play music or a video on the iPhone (in Music, Podcasts or YouTube) while mirroring. Press <kbd>Space</kbd> in the window. | It pauses on the phone; <kbd>Space</kbd> again plays. Log: `media: playpause (mirroring sender)` and `dacp: playpause -> 200`. Holding <kbd>Space</kbd> toggles once. |
+| 2 | <kbd>Ctrl</kbd>+<kbd>→</kbd>, then <kbd>Ctrl</kbd>+<kbd>←</kbd>. | The next track, then back (`nextitem`, `previtem`). |
+| 3 | <kbd>Ctrl</kbd>+<kbd>↑</kbd> a few times, then hold <kbd>Ctrl</kbd>+<kbd>↓</kbd>. | The phone's volume slider moves up a step each time, then down while held, and the PC's sound follows (**device test:** note whether the phone shows its volume HUD and whether the PC's level changes). |
+| 4 | Right-click the tray icon. | **Media controls ▸** with "Play / pause  Space", "Next track  Ctrl+Right", "Previous track  Ctrl+Left", "Volume up  Ctrl+Up", "Volume down  Ctrl+Down"; each works. Before `dacp: remote control available` (or from a device without it) the item isn't there. |
+| 5 | Draw mode on (<kbd>D</kbd>), press <kbd>Space</kbd>. | Play/pause as before; nothing is drawn or changed in the drawing. |
+| 6 | Two devices: press <kbd>Space</kbd> in each window. | Each controls its own device. |
+| 7 | A sender without remote control (log `dacp: the sender did not advertise a remote-control service`): press <kbd>Space</kbd>. | Balloon "No media controls" once per session; nothing else happens. |
+| 8 | Free edition: press <kbd>Space</kbd> or <kbd>Ctrl</kbd>+<kbd>→</kbd>; tray → "Media controls (Pro)…". | The AirGlass Pro dialog: "Media controls for the device are part of AirGlass Pro…". |
+| 9 | Plain arrow keys without <kbd>Ctrl</kbd>. | Nothing happens (as before). |

@@ -52,6 +52,7 @@ constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow
 constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
 constexpr UINT kMenuObs = 110, kMenuZoom = 111, kMenuDraw = 112, kMenuAskDevices = 113, kMenuForgetDevices = 114;
 constexpr UINT kMenuRequirePin = 115, kMenuForgetPaired = 116, kMenuSwitchWindow = 117;
+constexpr UINT kMenuPlayPause = 118, kMenuNext = 119, kMenuPrev = 120, kMenuVolUp = 121, kMenuVolDown = 122;
 constexpr int kAskSeconds = 30;  // allow-list: a device nobody answers for is turned away
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
@@ -63,6 +64,7 @@ struct StartEvent {
 struct MediaJob {
     std::string action, rid;
     double value = 0;
+    uint64_t sid = 0;  // a mirroring session's sender (Pro media keys); 0: the music session (TV Mode)
 };
 struct MediaResult {
     std::string rid, error;
@@ -263,6 +265,7 @@ private:
     // Pro tools (UI thread): files go to Pictures\AirGlass and Videos\AirGlass.
     void TakeScreenshot(GlassWindow& g);
     void ToggleRecording(GlassWindow& g);
+    void MirrorMedia(GlassWindow& g, const char* action);
     std::wstring MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext, const wchar_t* tag = L"");
 
     HINSTANCE inst_ = nullptr;
@@ -275,6 +278,7 @@ private:
     std::unique_ptr<GlassWindow> glass2_;  // Pro: the second, made when Pro is on
     int active_ = 0;
     bool twoDevicesAsked_ = false;  // free edition: the Pro dialog about two devices was offered (once per run)
+    uint64_t noRemoteSaid_ = 0;     // the session whose missing remote control a balloon explained
     AudioOutput audio_;
     AirPlayServer server_;
     MdnsResponder mdns_;
@@ -565,6 +569,19 @@ void App::ShowTrayMenu() {
                     !pro ? L"Zoom into a region (Pro)…" : g.Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
         AppendMenuW(m, MF_STRING | (g.DrawMode() ? MF_CHECKED : 0), kMenuDraw,
                     pro ? L"Draw on screen\tD" : L"Draw on screen (Pro)…");
+        if (server_.MirrorHasRemote(g.Session())) {  // the sender offers AirPlay remote control (DACP)
+            if (pro) {
+                HMENU media = CreatePopupMenu();
+                AppendMenuW(media, MF_STRING, kMenuPlayPause, L"Play / pause\tSpace");
+                AppendMenuW(media, MF_STRING, kMenuNext, L"Next track\tCtrl+Right");
+                AppendMenuW(media, MF_STRING, kMenuPrev, L"Previous track\tCtrl+Left");
+                AppendMenuW(media, MF_STRING, kMenuVolUp, L"Volume up\tCtrl+Up");
+                AppendMenuW(media, MF_STRING, kMenuVolDown, L"Volume down\tCtrl+Down");
+                AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(media), L"Media controls");
+            } else {
+                AppendMenuW(m, MF_STRING, kMenuPlayPause, L"Media controls (Pro)…");
+            }
+        }
     }
     AppendMenuW(m, MF_STRING, kMenuMediaFolder, L"Open screenshots folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -644,6 +661,11 @@ void App::ShowTrayMenu() {
     case kMenuObs: g.ToggleObsMode(); break;  // these ask for Pro in the free edition
     case kMenuZoom: g.ToggleRegionZoom(); break;
     case kMenuDraw: g.ToggleDrawMode(); break;
+    case kMenuPlayPause: MirrorMedia(g, "playpause"); break;
+    case kMenuNext: MirrorMedia(g, "next"); break;
+    case kMenuPrev: MirrorMedia(g, "prev"); break;
+    case kMenuVolUp: MirrorMedia(g, "volumeup"); break;
+    case kMenuVolDown: MirrorMedia(g, "volumedown"); break;
     case kMenuAskDevices:
         if (cfg_.askManaged) break;
         // Turning it on is Pro; turning it off never is, and a list that is on stays on after the trial, so it
@@ -900,6 +922,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                               : w == GlassWindow::kProAllowList ? L"Asking before new devices connect is"
                               : w == GlassWindow::kProPin      ? L"Requiring a code to connect is"
                               : w == GlassWindow::kProTwoDevices ? L"Mirroring two devices at once is"
+                              : w == GlassWindow::kProMedia    ? L"Media controls for the device are"
                                                                : L"Windowed mode is";
         std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
         reason += cfg_.trialStarted                    ? L" Your free trial has ended."
@@ -1250,6 +1273,32 @@ void App::ToggleRecording(GlassWindow& g) {
         Balloon(L"Couldn't start recording", Utf8ToWide(err));
 }
 
+// Pro media keys and the tray's Media controls: sent to the window's sender through its DACP remote, off the UI
+// thread (a command can take a couple of seconds on a slow network).
+void App::MirrorMedia(GlassWindow& g, const char* action) {
+    if (!glass_.Pro()) {
+        PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProMedia, 0);
+        return;
+    }
+    uint64_t sid = g.Session();
+    if (!sid || !g.SessionLive()) return;
+    if (!server_.MirrorHasRemote(sid)) {
+        LOGI("media: %s: this sender offers no remote control", action);
+        if (noRemoteSaid_ != sid) {
+            noRemoteSaid_ = sid;
+            Balloon(L"No media controls", L"This device doesn't offer AirPlay remote control (yet), so AirGlass can't "
+                                          L"play, pause, skip or change its volume.");
+        }
+        return;
+    }
+    MediaJob job;
+    job.action = action;
+    job.sid = sid;
+    std::lock_guard<std::mutex> lk(mediaMu_);
+    mediaQ_.push_back(job);
+    mediaCv_.notify_one();
+}
+
 // A recording ends with its session (or when another device takes the window over).
 void App::SaveRecordingAtEnd(GlassWindow& g, const wchar_t* why) {
     if (!g.Rec().Active()) return;
@@ -1308,6 +1357,7 @@ bool App::CreateGlass(int i) {
     g->onUpgradeRequested = [this](int feature) { PostMessageW(msgWnd_, kMsgUpgrade, WPARAM(feature), 0); };
     g->onScreenshotKey = [this, g] { TakeScreenshot(*g); };
     g->onRecordToggle = [this, g] { ToggleRecording(*g); };
+    g->onMediaKey = [this, g](const char* action) { MirrorMedia(*g, action); };
     g->onScreenshot = [this](bool ok, const std::wstring& path) {
         if (ok)
             Balloon(L"Screenshot saved", L"Saved to Pictures\\AirGlass as " + path.substr(path.find_last_of(L'\\') + 1) +
@@ -1409,9 +1459,11 @@ void App::MediaLoop() {
             job = mediaQ_.front();
             mediaQ_.pop_front();
         }
-        std::string err = server_.MediaCommand(job.action, job.value);
-        LOGI("media: %s%s%s", job.action.c_str(), err.empty() ? "" : " -> ", err.c_str());
-        PostMessageW(msgWnd_, kMsgMediaDone, 0, reinterpret_cast<LPARAM>(new MediaResult{job.rid, err}));
+        std::string err = job.sid ? server_.MirrorMediaCommand(job.sid, job.action)
+                                  : server_.MediaCommand(job.action, job.value);
+        LOGI("media: %s%s%s%s", job.action.c_str(), job.sid ? " (mirroring sender)" : "", err.empty() ? "" : " -> ",
+             err.c_str());
+        if (!job.sid) PostMessageW(msgWnd_, kMsgMediaDone, 0, reinterpret_cast<LPARAM>(new MediaResult{job.rid, err}));
     }
 }
 
