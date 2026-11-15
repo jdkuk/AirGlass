@@ -4,6 +4,7 @@
 #include <dwmapi.h>
 #include <shellscalingapi.h>
 #include <windowsx.h>
+#include <wincodec.h>
 
 #include "ps_compose.h"
 #include "ps_convert.h"
@@ -13,6 +14,7 @@ namespace {
 
 constexpr UINT kMsgSettled = WM_APP + 201;
 constexpr UINT kMsgDismissed = WM_APP + 202;
+constexpr UINT kMsgShot = WM_APP + 204;         // lParam: ShotResult* (render thread -> UI)
 constexpr UINT kMsgContentSize = WM_APP + 203;  // wParam: frame w | h << 16, lParam: picture w | h << 16
 constexpr UINT_PTR kTimerIdle = 7;
 constexpr UINT_PTR kTimerDebugFsIn = 8, kTimerDebugFsOut = 9;
@@ -333,6 +335,7 @@ void GlassWindow::Destroy() {
 // Frame sink (decoder threads)
 
 void GlassWindow::PresentHwFrame(ID3D11Texture2D* tex, unsigned index, int w, int h, const VideoColor& c) {
+    recorder_.SetFrameSize(w, h);
     std::lock_guard<std::recursive_mutex> g(gpuLock_);
     if (!dev_) return;
     if (!nv12_ || nv12W_ != w || nv12H_ != h) {
@@ -380,6 +383,7 @@ void GlassWindow::PresentHwFrame(ID3D11Texture2D* tex, unsigned index, int w, in
 
 void GlassWindow::PresentSwFrame(const uint8_t* const planes[3], const int strides[3], bool nv12, int w, int h,
                                  const VideoColor& c) {
+    recorder_.SetFrameSize(w, h);
     std::lock_guard<std::recursive_mutex> g(gpuLock_);
     if (!dev_) return;
     auto ensure = [&](ComPtr<ID3D11Texture2D>& t, ComPtr<ID3D11ShaderResourceView>& s, int tw, int th, DXGI_FORMAT f) {
@@ -842,6 +846,7 @@ void GlassWindow::RenderLocked() {
             SaveSnapshotLocked(int(snapNext_));
             ++snapNext_;
         }
+        if (shotReq_.exchange(false)) SaveScreenshotLocked(L);
         HRESULT hr = swap_->Present(1, 0);
         if (FAILED(hr) && !deviceLost_) {
             deviceLost_ = true;
@@ -938,6 +943,135 @@ void GlassWindow::SaveSnapshotLocked(int index) {
     fwrite(px.data(), 1, px.size(), f);
     fclose(f);
     LOGI("debug: snapshot %d (%dx%d) at t=%.2fs", index, w, h, NowSeconds() - sessionStart_);
+}
+
+struct ShotResult {
+    bool ok = false;
+    std::wstring path;
+    HGLOBAL dib = nullptr;  // CF_DIB of the mirrored picture, for the clipboard
+};
+
+void GlassWindow::RequestScreenshot(const std::wstring& path) {
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        shotPath_ = path;
+    }
+    shotReq_ = true;
+    needFrame_ = true;
+    Wake();
+}
+
+// Pro screenshot, taken from the frame just composed (render thread, renderMu_ held): the glass
+// window with its real transparency as a PNG, and the mirrored picture alone on the clipboard.
+void GlassWindow::SaveScreenshotLocked(const Layout& L) {
+    auto* res = new ShotResult;
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        res->path = shotPath_;
+    }
+    ComPtr<ID3D11Texture2D> back;
+    swap_->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(back.GetAddressOf()));
+    D3D11_TEXTURE2D_DESC d;
+    back->GetDesc(&d);
+    d.Usage = D3D11_USAGE_STAGING;
+    d.BindFlags = 0;
+    d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    d.MiscFlags = 0;
+    ComPtr<ID3D11Texture2D> staging;
+    D3D11_MAPPED_SUBRESOURCE m{};
+    const int W = int(d.Width), H = int(d.Height);
+    auto clip = [&](const RectF& r, int& x0, int& y0, int& x1, int& y1) {
+        x0 = std::clamp(int(std::floor(r.x0)), 0, W);
+        y0 = std::clamp(int(std::floor(r.y0)), 0, H);
+        x1 = std::clamp(int(std::ceil(r.x1)), 0, W);
+        y1 = std::clamp(int(std::ceil(r.y1)), 0, H);
+        return x1 > x0 && y1 > y0;
+    };
+    std::vector<uint8_t> png, dib;
+    int pw = 0, ph = 0, dw = 0, dh = 0;
+    if (SUCCEEDED(dev_->CreateTexture2D(&d, nullptr, staging.GetAddressOf()))) {
+        ctx_->CopyResource(staging.Get(), back.Get());
+        if (SUCCEEDED(ctx_->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &m))) {
+            const auto* base = static_cast<const uint8_t*>(m.pData);
+            int x0, y0, x1, y1;
+            if (clip(L.slab, x0, y0, x1, y1)) {  // glass window: straight (un-premultiplied) BGRA for PNG
+                pw = x1 - x0;
+                ph = y1 - y0;
+                png.resize(size_t(pw) * ph * 4);
+                for (int y = 0; y < ph; ++y) {
+                    const uint8_t* s = base + size_t(y0 + y) * m.RowPitch + size_t(x0) * 4;
+                    uint8_t* o = png.data() + size_t(y) * pw * 4;
+                    for (int x = 0; x < pw; ++x, s += 4, o += 4) {
+                        uint8_t a = s[3];
+                        for (int c = 0; c < 3; ++c) o[c] = a ? uint8_t(std::min(255, s[c] * 255 / a)) : 0;
+                        o[3] = a;
+                    }
+                }
+            }
+            if (clip(L.video, x0, y0, x1, y1)) {  // the picture alone, opaque, bottom-up 32-bit DIB
+                dw = x1 - x0;
+                dh = y1 - y0;
+                dib.resize(sizeof(BITMAPINFOHEADER) + size_t(dw) * dh * 4);
+                auto* ih = reinterpret_cast<BITMAPINFOHEADER*>(dib.data());
+                ih->biSize = sizeof(BITMAPINFOHEADER);
+                ih->biWidth = dw;
+                ih->biHeight = dh;
+                ih->biPlanes = 1;
+                ih->biBitCount = 32;
+                ih->biCompression = BI_RGB;
+                ih->biSizeImage = DWORD(size_t(dw) * dh * 4);
+                uint8_t* px = dib.data() + sizeof(BITMAPINFOHEADER);
+                for (int y = 0; y < dh; ++y) {
+                    const uint8_t* s = base + size_t(y0 + y) * m.RowPitch + size_t(x0) * 4;
+                    uint8_t* o = px + size_t(dh - 1 - y) * dw * 4;
+                    for (int x = 0; x < dw; ++x, s += 4, o += 4) {
+                        o[0] = s[0];  // premultiplied over black = the colour values themselves
+                        o[1] = s[1];
+                        o[2] = s[2];
+                        o[3] = 255;
+                    }
+                }
+            }
+            ctx_->Unmap(staging.Get(), 0);
+        }
+    }
+    if (!dib.empty()) {
+        if (HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, dib.size())) {
+            if (void* p = GlobalLock(g)) {
+                std::memcpy(p, dib.data(), dib.size());
+                GlobalUnlock(g);
+                res->dib = g;
+            } else {
+                GlobalFree(g);
+            }
+        }
+    }
+    if (!png.empty() && !res->path.empty()) {
+        HRESULT co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        {
+            ComPtr<IWICImagingFactory> f;
+            ComPtr<IWICStream> st;
+            ComPtr<IWICBitmapEncoder> enc;
+            ComPtr<IWICBitmapFrameEncode> frame;
+            ComPtr<IPropertyBag2> props;
+            WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppBGRA;
+            res->ok = SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                                 IID_PPV_ARGS(f.GetAddressOf()))) &&
+                      SUCCEEDED(f->CreateStream(st.GetAddressOf())) &&
+                      SUCCEEDED(st->InitializeFromFilename(res->path.c_str(), GENERIC_WRITE)) &&
+                      SUCCEEDED(f->CreateEncoder(GUID_ContainerFormatPng, nullptr, enc.GetAddressOf())) &&
+                      SUCCEEDED(enc->Initialize(st.Get(), WICBitmapEncoderNoCache)) &&
+                      SUCCEEDED(enc->CreateNewFrame(frame.GetAddressOf(), props.GetAddressOf())) &&
+                      SUCCEEDED(frame->Initialize(props.Get())) && SUCCEEDED(frame->SetSize(UINT(pw), UINT(ph))) &&
+                      SUCCEEDED(frame->SetPixelFormat(&fmt)) && IsEqualGUID(fmt, GUID_WICPixelFormat32bppBGRA) &&
+                      SUCCEEDED(frame->WritePixels(UINT(ph), UINT(pw) * 4, UINT(png.size()), png.data())) &&
+                      SUCCEEDED(frame->Commit()) && SUCCEEDED(enc->Commit());
+        }
+        if (SUCCEEDED(co)) CoUninitialize();
+        if (!res->ok) LOGW("screenshot: could not write %s", WideToUtf8(res->path).c_str());
+    }
+    LOGI("screenshot: %dx%d glass, %dx%d picture%s", pw, ph, dw, dh, res->ok ? " saved" : "");
+    PostMessageW(hwnd_, kMsgShot, 0, reinterpret_cast<LPARAM>(res));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1095,7 +1229,7 @@ void GlassWindow::ExitFullscreen() {
     if (!fullscreen_) return;
     if (!pro_ && sessionLive_ && !dismissing_) {
         LOGI("ui: windowed mode needs AirGlass Pro");
-        if (onUpgradeRequested) onUpgradeRequested();
+        if (onUpgradeRequested) onUpgradeRequested(kProWindow);
         return;
     }
     fullscreen_ = false;
@@ -1899,6 +2033,22 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             return 0;
         case 'P':
         case 'T': SetPinned(!pinned_); return 0;
+        case 'S':  // Pro: screenshot (the caller picks the file name)
+            if (!sessionLive_) return 0;
+            if (!pro_) {
+                if (onUpgradeRequested) onUpgradeRequested(kProScreenshot);
+            } else if (onScreenshotKey) {
+                onScreenshotKey();
+            }
+            return 0;
+        case 'R':  // Pro: start/stop recording
+            if (!sessionLive_) return 0;
+            if (!pro_) {
+                if (onUpgradeRequested) onUpgradeRequested(kProRecord);
+            } else if (onRecordToggle) {
+                onRecordToggle();
+            }
+            return 0;
         default: break;
         }
         break;
@@ -1931,6 +2081,20 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             if (!fullscreen_ && !SameRect(t, winRect_)) SetWindowRectSync(shrinkTo_);
         }
         return 0;
+    case kMsgShot: {
+        std::unique_ptr<ShotResult> r(reinterpret_cast<ShotResult*>(l));
+        if (r->dib) {
+            bool owned = false;
+            if (OpenClipboard(hwnd_)) {
+                EmptyClipboard();
+                owned = SetClipboardData(CF_DIB, r->dib) != nullptr;
+                CloseClipboard();
+            }
+            if (!owned) GlobalFree(r->dib);
+        }
+        if (onScreenshot) onScreenshot(r->ok, r->path);
+        return 0;
+    }
     case kMsgContentSize:
         if (sessionLive_ && LOWORD(w) == vidW_ && HIWORD(w) == vidH_) {
             contentW_ = LOWORD(l);

@@ -5,6 +5,21 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-11-15
+
+### Added
+- Free 7-day AirGlass Pro trial, starting with the first mirroring session. The tray menu shows the days left, and
+  when the trial ends AirGlass offers Pro once and returns to full-screen mirroring.
+- Pro: screenshots. Press <kbd>S</kbd> (or use the tray menu) to save a PNG of the glass window, with its real
+  transparency, to Pictures\AirGlass and put the mirrored picture on the clipboard.
+- Pro: recording. Press <kbd>R</kbd> to record the mirrored screen to an MP4 in Videos\AirGlass. The sender's H.264
+  stream is copied without re-encoding, so it keeps full quality and uses almost no CPU. Picture only, no sound; a
+  recording finishes by itself if the device rotates.
+- Tray menu: Save screenshot, Start/Stop recording (with the running time) and Open screenshots folder.
+
+### Changed
+- The tray menu's "Unlock windowed mode" is now "Buy AirGlass Pro".
+
 ## [1.0.3] - 2026-10-20
 
 ### Changed

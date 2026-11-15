@@ -18,6 +18,8 @@ struct Config {
     std::string licenseKey, licenseInstance;  // AirGlass Pro (Lemon Squeezy key + activation id)
     long long proUnlocked = 0;                // unix time Pro was unlocked on this PC (refund window)
     int proSessions = 0;                      // mirroring sessions since then (refund: fewer than 10)
+    long long trialStarted = 0;               // unix time of the first mirroring session (7-day Pro trial)
+    bool trialEndShown = false;               // the "trial ended" dialog was shown once
 
     void Load();   // creates identity on first run
     void Save() const;

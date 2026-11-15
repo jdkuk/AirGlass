@@ -2,6 +2,7 @@
 #include "common.h"
 
 #include <shellapi.h>
+#include <shlobj.h>
 
 #include <condition_variable>
 #include <deque>
@@ -30,13 +31,16 @@ constexpr UINT kMsgPipeLine = WM_APP + 6;     // lParam: std::string* (one JSON 
 constexpr UINT kMsgPipeClients = WM_APP + 7;  // wParam: connected client count
 constexpr UINT kMsgNowPlaying = WM_APP + 8;
 constexpr UINT kMsgMediaDone = WM_APP + 9;    // lParam: MediaResult*
-constexpr UINT kMsgUpgrade = WM_APP + 10;     // free edition: the user tried to leave full screen
+constexpr UINT kMsgUpgrade = WM_APP + 10;     // free edition: a Pro feature was used (wParam: GlassWindow::ProFeature)
 constexpr UINT kMsgLicenseRevoked = WM_APP + 11;
+constexpr UINT kMsgTrialEnded = WM_APP + 12;
+constexpr UINT kMsgRecordStopped = WM_APP + 13;  // lParam: std::wstring* (finished file), recorder thread
 constexpr UINT_PTR kTimerNowPlaying = 1;
 constexpr UINT_PTR kTimerTvGrace = 2;
 constexpr UINT_PTR kTimerNpDebounce = 3;
 constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer has registered our tray icon
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
+constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108;
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 struct StartEvent {
@@ -184,6 +188,13 @@ private:
     // AirGlass Pro (UI thread).
     void ShowUpgrade(const std::wstring& reason);
     void CheckLicenseInBackground();
+    bool Licensed() const { return !cfg_.licenseKey.empty() && !cfg_.licenseInstance.empty(); }
+    // Days left in the free Pro trial: license::kTrialDays before the first session, 0 once it's over.
+    int TrialDaysLeft() const;
+    // Pro tools (UI thread): files go to Pictures\AirGlass and Videos\AirGlass.
+    void TakeScreenshot();
+    void ToggleRecording();
+    std::wstring MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext);
 
     HINSTANCE inst_ = nullptr;
     HWND msgWnd_ = nullptr;
@@ -289,7 +300,21 @@ void App::ShowTrayMenu() {
     if (pipeClients_ > 0) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Connected to TV Mode");
     if (glass_.Visible()) AppendMenuW(m, MF_STRING, kMenuShow, L"Show mirroring window");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    if (glass_.Pro()) {
+    if (glass_.Visible() && glass_.SessionLive()) {
+        bool pro = glass_.Pro();
+        AppendMenuW(m, MF_STRING, kMenuShot, pro ? L"Save screenshot\tS" : L"Save screenshot (Pro)…");
+        std::wstring rec = L"Start recording\tR";
+        if (glass_.Rec().Active()) {
+            int s = int(glass_.Rec().Seconds());
+            wchar_t t[64];
+            swprintf(t, 64, L"Stop recording (%d:%02d)\tR", s / 60, s % 60);
+            rec = t;
+        }
+        AppendMenuW(m, MF_STRING, kMenuRecord, pro ? rec.c_str() : L"Start recording (Pro)…");
+    }
+    AppendMenuW(m, MF_STRING, kMenuMediaFolder, L"Open screenshots folder");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    if (Licensed()) {
         AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"AirGlass Pro — thank you!");
         // Refund eligibility, shown honestly so buyers can quote it when asking for a refund.
         if (!cfg_.licenseKey.empty() && cfg_.proUnlocked > 0) {
@@ -304,7 +329,20 @@ void App::ShowTrayMenu() {
             AppendMenuW(m, MF_STRING | MF_GRAYED, 0, line);
         }
     }
-    else AppendMenuW(m, MF_STRING, kMenuPro, (std::wstring(L"Unlock windowed mode (Pro, ") + license::kPrice + L")…").c_str());
+#ifndef AIRGLASS_ALWAYS_PRO
+    else {
+        int left = TrialDaysLeft();
+        wchar_t line[96];
+        if (cfg_.trialStarted == 0)
+            swprintf(line, 96, L"Free %d-day Pro trial starts when you mirror", license::kTrialDays);
+        else if (left > 0)
+            swprintf(line, 96, L"Pro trial: %d day%s left", left, left == 1 ? L"" : L"s");
+        else
+            swprintf(line, 96, L"Pro trial ended");
+        AppendMenuW(m, MF_STRING | MF_GRAYED, 0, line);
+        AppendMenuW(m, MF_STRING, kMenuPro, (std::wstring(L"Buy AirGlass Pro (") + license::kPrice + L")…").c_str());
+    }
+#endif
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), kMenuAutostart, L"Start with Windows");
     AppendMenuW(m, MF_STRING, kMenuLogs, L"Open log folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -318,7 +356,20 @@ void App::ShowTrayMenu() {
     case kMenuAutostart: SetAutostart(!AutostartEnabled()); break;
     case kMenuLogs: ShellExecuteW(nullptr, L"open", AppDataDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case kMenuShow: glass_.BringToFront(); break;
-    case kMenuPro: ShowUpgrade(L"The free edition mirrors full screen. Pro adds the floating glass window."); break;
+    case kMenuPro: ShowUpgrade(L"Pro adds the floating glass window, screenshots and recording."); break;
+    case kMenuShot:
+        if (glass_.Pro()) TakeScreenshot();
+        else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProScreenshot, 0);
+        break;
+    case kMenuRecord:
+        if (glass_.Pro()) ToggleRecording();
+        else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProRecord, 0);
+        break;
+    case kMenuMediaFolder: {
+        std::wstring dir = MediaFile(FOLDERID_Pictures, nullptr);
+        ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        break;
+    }
     case kMenuQuit: PostQuitMessage(0); break;
     default: break;
     }
@@ -350,6 +401,28 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case kMsgMirrorStart: {
         std::unique_ptr<StartEvent> e(reinterpret_cast<StartEvent*>(l));
         if (curSid_ && curSid_ != e->sid) EmitStopped(curSid_, "takeover");
+#ifndef AIRGLASS_ALWAYS_PRO
+        // Free Pro trial: starts with the first real session, decided before the window opens.
+        if (!loopback_ && !Licensed()) {
+            bool starting = cfg_.trialStarted == 0;
+            if (starting) {
+                cfg_.trialStarted = _time64(nullptr);
+                cfg_.Save();
+                LOGI("license: %d-day Pro trial started", license::kTrialDays);
+            }
+            bool on = TrialDaysLeft() > 0;
+            glass_.SetPro(on);
+            if (starting)
+                Balloon(L"Your 7-day AirGlass Pro trial has started",
+                        L"Move, resize and zoom the glass window, keep it on top (T), take screenshots (S) and record "
+                        L"(R). Full-screen mirroring stays free after the trial.");
+            else if (!on && !cfg_.trialEndShown) {
+                cfg_.trialEndShown = true;
+                cfg_.Save();
+                PostMessageW(msgWnd_, kMsgTrialEnded, 0, 0);
+            }
+        }
+#endif
         glass_.BeginSession(e->sid, Utf8ToWide(e->name), e->model);
         if (glass_.Pro() && !loopback_ && !cfg_.licenseKey.empty() && e->sid != curSid_) {
             ++cfg_.proSessions;  // refund policy counter (see license::kRefundSessions)
@@ -373,6 +446,12 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case kMsgMirrorStop:
+        if (uint64_t(w) == curSid_ && glass_.Rec().Active()) {
+            std::wstring file = glass_.Rec().Stop();
+            if (!file.empty())
+                Balloon(L"Recording saved", L"Mirroring ended. Saved to Videos\\AirGlass as " +
+                                                file.substr(file.find_last_of(L'\\') + 1) + L".");
+        }
         glass_.EndSession(uint64_t(w));
         if (uint64_t(w) == curSid_) EmitStopped(curSid_, "sender");
         return 0;
@@ -430,9 +509,25 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (pipeClients_ == 0) glass_.SetTvControlled(false);
         }
         return 0;
-    case kMsgUpgrade:
-        ShowUpgrade(L"Windowed mode is part of AirGlass Pro. The free edition mirrors full screen.");
+    case kMsgUpgrade: {
+        const wchar_t* what = w == GlassWindow::kProScreenshot ? L"Screenshots are"
+                              : w == GlassWindow::kProRecord   ? L"Recording is"
+                                                               : L"Windowed mode is";
+        std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
+        reason += cfg_.trialStarted ? L" Your free trial has ended." : L" The free edition mirrors full screen.";
+        ShowUpgrade(reason);
         return 0;
+    }
+    case kMsgTrialEnded:
+        ShowUpgrade(L"Your 7-day Pro trial has ended. Keep the glass window, screenshots and recording; "
+                    L"full screen stays free.");
+        return 0;
+    case kMsgRecordStopped: {
+        std::unique_ptr<std::wstring> file(reinterpret_cast<std::wstring*>(l));
+        Balloon(L"Recording saved", L"The device rotated, so the recording was finished. Saved to Videos\\AirGlass as " +
+                                        file->substr(file->find_last_of(L'\\') + 1) + L". Press R to record again.");
+        return 0;
+    }
     case kMsgLicenseRevoked:
         LOGW("license: no longer valid; back to the free edition");
         cfg_.licenseKey.clear();
@@ -566,7 +661,7 @@ void App::OnPipeCommand(const std::string& line) {
 }
 
 void App::ShowUpgrade(const std::wstring& reason) {
-    if (glass_.Pro() || upgradeOpen_) return;
+    if (Licensed() || upgradeOpen_) return;
     if (loopback_) {  // automated tests: never pop a dialog
         LOGI("license: upgrade dialog suppressed in loopback mode");
         return;
@@ -584,6 +679,52 @@ void App::ShowUpgrade(const std::wstring& reason) {
         LOGI("license: AirGlass Pro unlocked");
     }
     upgradeOpen_ = false;
+}
+
+int App::TrialDaysLeft() const {
+    if (cfg_.trialStarted == 0) return license::kTrialDays;
+    long long left = cfg_.trialStarted + (long long)license::kTrialDays * 86400 - _time64(nullptr);
+    return left <= 0 ? 0 : int((left + 86399) / 86400);
+}
+
+// "<known folder>\AirGlass\AirGlass 2026-11-15 10.42.31<ext>"; with ext == nullptr, the folder itself.
+std::wstring App::MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext) {
+    std::wstring dir;
+    PWSTR p = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(folder, KF_FLAG_CREATE, nullptr, &p))) dir = p;
+    CoTaskMemFree(p);
+    if (dir.empty()) dir = AppDataDir();
+    dir += L"\\AirGlass";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    if (!ext) return dir;
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    wchar_t name[96];
+    swprintf(name, 96, L"\\AirGlass %04d-%02d-%02d %02d.%02d.%02d%s", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
+             t.wSecond, ext);
+    return dir + name;
+}
+
+void App::TakeScreenshot() {
+    if (!glass_.Pro() || !glass_.Visible()) return;
+    glass_.RequestScreenshot(MediaFile(FOLDERID_Pictures, L".png"));
+}
+
+void App::ToggleRecording() {
+    if (!glass_.Pro()) return;
+    if (glass_.Rec().Active()) {
+        std::wstring file = glass_.Rec().Stop();
+        if (!file.empty())
+            Balloon(L"Recording saved", L"Saved to Videos\\AirGlass as " + file.substr(file.find_last_of(L'\\') + 1) + L".");
+        return;
+    }
+    std::string err;
+    std::wstring file = MediaFile(FOLDERID_Videos, L".mp4");
+    if (glass_.Rec().Start(file, &err))
+        Balloon(L"Recording", L"Recording the mirrored screen to Videos\\AirGlass (picture only, no sound). Press R "
+                              L"or use the tray menu to stop.");
+    else
+        Balloon(L"Couldn't start recording", Utf8ToWide(err));
 }
 
 // Re-checks a stored key once per start. Only a definite "invalid" answer (refund, disabled key)
@@ -654,7 +795,19 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     };
     glass_.onTvLayoutChanged = [this](bool byUser) { EmitLayout(byUser); };
     // Posted, so the dialog never opens inside the glass window's own input handling.
-    glass_.onUpgradeRequested = [this] { PostMessageW(msgWnd_, kMsgUpgrade, 0, 0); };
+    glass_.onUpgradeRequested = [this](int feature) { PostMessageW(msgWnd_, kMsgUpgrade, WPARAM(feature), 0); };
+    glass_.onScreenshotKey = [this] { TakeScreenshot(); };
+    glass_.onRecordToggle = [this] { ToggleRecording(); };
+    glass_.onScreenshot = [this](bool ok, const std::wstring& path) {
+        if (ok)
+            Balloon(L"Screenshot saved", L"Saved to Pictures\\AirGlass as " + path.substr(path.find_last_of(L'\\') + 1) +
+                                             L", and the picture is on the clipboard.");
+        else
+            Balloon(L"Screenshot copied", L"The picture is on the clipboard (the PNG file couldn't be saved).");
+    };
+    glass_.Rec().onAutoStop = [this](const std::wstring& path, const std::string&) {
+        PostMessageW(msgWnd_, kMsgRecordStopped, 0, reinterpret_cast<LPARAM>(new std::wstring(path)));
+    };
     glass_.onContentSize = [this](uint64_t sid, int w, int h) {
         if (sid != curSid_) return;
         curW_ = w;
@@ -666,13 +819,13 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
 #ifdef AIRGLASS_ALWAYS_PRO
     bool pro = true;  // personal build (python build.py --pro)
 #else
-    bool pro = !cfg_.licenseKey.empty() && !cfg_.licenseInstance.empty();
+    bool pro = Licensed() || TrialDaysLeft() > 0;  // the trial starts with the first mirroring session
     // Loopback tests exercise the windowed UI unless AIRGLASS_DEBUG_FREE asks for the free edition.
     if (loopback) pro = !GetEnvironmentVariableW(L"AIRGLASS_DEBUG_FREE", nullptr, 0);
     else CheckLicenseInBackground();
 #endif
     glass_.SetPro(pro);
-    LOGI("edition: %s", pro ? "Pro" : "free (full screen only)");
+    LOGI("edition: %s", Licensed() ? "Pro" : pro ? "Pro trial" : "free (full screen only)");
     glass_.onOptionsChanged = [this] {
         auto o = glass_.CurrentOptions();
         cfg_.pinned = o.pinned;

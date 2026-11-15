@@ -58,9 +58,10 @@ CFLAGS = ["-std=gnu11", "-O2", "-w"]
 LIBS = [
     os.path.join(FFMPEG, "lib", "libavcodec.dll.a"),
     os.path.join(FFMPEG, "lib", "libavutil.dll.a"),
+    os.path.join(FFMPEG, "lib", "libavformat.dll.a"),  # Pro: MP4 recording
     "-ld3d11", "-ldxgi", "-ldcomp", "-ld2d1", "-ldwrite", "-ldwmapi", "-lshcore",
     "-lws2_32", "-lmswsock", "-liphlpapi", "-lbcrypt", "-ladvapi32", "-lole32", "-loleaut32",
-    "-luuid", "-lshell32", "-luser32", "-lgdi32", "-lavrt", "-lwinmm", "-lwinhttp",
+    "-luuid", "-lwindowscodecs", "-lshell32", "-luser32", "-lgdi32", "-lavrt", "-lwinmm", "-lwinhttp",
 ]
 
 SHADER_JOBS = [

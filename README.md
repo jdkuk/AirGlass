@@ -94,10 +94,13 @@ engine, no account, no analytics. Everything stays on your local network.
 | Lossless AirPlay music | ✅ | ✅ |
 | Move, resize, smooth zoom | | ✅ |
 | Keep on top, corner float | | ✅ |
+| Screenshots: PNG of the glass window + the picture on the clipboard (<kbd>S</kbd>) | | ✅ |
+| Record the mirrored screen to MP4, original quality, no re-encode (<kbd>R</kbd>) | | ✅ |
 | Use on up to 3 PCs | | ✅ |
 
-Try it free to check it works with your devices. To unlock Pro, right-click the tray icon →
-**Unlock windowed mode**, buy, and paste the license key from your receipt email. The key is
+**Every install starts with a free 7-day Pro trial** from your first mirroring session, so you can try the window,
+screenshots and recording. After it, full-screen mirroring stays free. To unlock Pro, right-click the tray icon →
+**Buy AirGlass Pro**, buy, and paste the license key from your receipt email. The key is
 checked once online, and after that Pro also works offline. [How licensing works →](docs/licensing.md)
 
 > [!NOTE]

@@ -22,4 +22,6 @@ public:
     // A decoded software frame: YUV 4:2:0 planar (3 planes) or NV12 (2 planes).
     virtual void PresentSwFrame(const uint8_t* const planes[3], const int strides[3], bool nv12, int width,
                                 int height, const VideoColor& color) = 0;
+    // The compressed access unit (Annex-B, SPS/PPS prepended on config changes), for recording.
+    virtual void OnEncodedVideo(const uint8_t* data, size_t n) { (void)data; (void)n; }
 };

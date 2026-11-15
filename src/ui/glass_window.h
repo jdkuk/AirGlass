@@ -4,6 +4,7 @@
 
 #include "common.h"
 #include "media/frame_sink.h"
+#include "media/recorder.h"
 
 #include <d2d1_1.h>
 #include <d3d11.h>
@@ -67,7 +68,19 @@ public:
     std::function<void()> onUserClose;
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
-    std::function<void()> onUpgradeRequested;
+    // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord.
+    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2 };
+    std::function<void(int feature)> onUpgradeRequested;
+
+    // Pro: screenshot of the glass window (PNG with transparency, saved by the caller's path) and the
+    // mirrored picture alone on the clipboard. Rendered on the next frame; onScreenshot reports back
+    // on the UI thread.
+    void RequestScreenshot(const std::wstring& path);
+    std::function<void(bool ok, const std::wstring& path)> onScreenshot;
+    std::function<void()> onScreenshotKey;  // S key (Pro): the caller picks the file and calls RequestScreenshot
+    // Pro: MP4 recording of the mirrored stream (R key or tray menu -> onRecordToggle).
+    Recorder& Rec() { return recorder_; }
+    std::function<void()> onRecordToggle;
     // The picture inside the video frame changed size (black side bars detected or gone).
     std::function<void(uint64_t sid, int width, int height)> onContentSize;
 
@@ -77,6 +90,7 @@ public:
     void PresentHwFrame(ID3D11Texture2D* tex, unsigned index, int width, int height, const VideoColor& color) override;
     void PresentSwFrame(const uint8_t* const planes[3], const int strides[3], bool nv12, int width, int height,
                         const VideoColor& color) override;
+    void OnEncodedVideo(const uint8_t* data, size_t n) override { recorder_.Feed(data, n); }
 
     // Debug: renders the next frame and saves nothing; used by tests to force a frame.
     void Wake();
@@ -244,6 +258,10 @@ private:
     size_t snapNext_ = 0;
     double sessionStart_ = 0;
     void SaveSnapshotLocked(int index);
+    void SaveScreenshotLocked(const Layout& L);
+    std::atomic<bool> shotReq_{false};
+    std::wstring shotPath_;  // guarded by stateMu_
+    Recorder recorder_;
 
     // Threads / sync
     std::mutex stateMu_;   // guards shared_, pub*

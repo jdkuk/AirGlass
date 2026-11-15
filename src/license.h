@@ -19,6 +19,8 @@ constexpr const wchar_t* kPrice = L"$9.99";
 // Refund policy (Steam-style): within kRefundDays of unlocking and fewer than kRefundSessions
 // mirroring sessions with Pro. AirGlass only counts and shows this; refunds are granted by hand.
 constexpr int kRefundDays = 14;
+// Free trial of Pro: the first kTrialDays from the first mirroring session.
+constexpr int kTrialDays = 7;
 constexpr int kRefundSessions = 10;
 
 struct Result {

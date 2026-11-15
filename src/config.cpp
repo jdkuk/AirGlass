@@ -88,6 +88,8 @@ void Config::Load() {
     licenseInstance = WideToUtf8(Read(path, L"license", L"instance"));
     proUnlocked = _wtoi64(Read(path, L"license", L"unlocked").c_str());
     proSessions = ReadInt(path, L"license", L"sessions", 0);
+    trialStarted = _wtoi64(Read(path, L"license", L"trial").c_str());
+    trialEndShown = ReadInt(path, L"license", L"trialendshown", 0) != 0;
     if (dirty) Save();
 }
 
@@ -111,4 +113,6 @@ void Config::Save() const {
     Write(path, L"license", L"instance", Utf8ToWide(licenseInstance));
     Write(path, L"license", L"unlocked", std::to_wstring(proUnlocked));
     Write(path, L"license", L"sessions", std::to_wstring(proSessions));
+    Write(path, L"license", L"trial", std::to_wstring(trialStarted));
+    Write(path, L"license", L"trialendshown", trialEndShown ? L"1" : L"0");
 }

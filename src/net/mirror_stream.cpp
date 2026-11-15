@@ -208,7 +208,9 @@ void MirrorStream::HandleVideo(std::vector<uint8_t>& payload) {
         joined_.insert(joined_.end(), payload.begin(), payload.end());
         pendingSpsPps_ = false;
         decoder_.Decode(joined_.data(), joined_.size());
+        if (sink_) sink_->OnEncodedVideo(joined_.data(), joined_.size());
     } else {
         decoder_.Decode(payload.data(), size);
+        if (sink_) sink_->OnEncodedVideo(payload.data(), size);
     }
 }

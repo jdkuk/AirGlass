@@ -7,7 +7,13 @@
 | Screen Mirroring | full screen | full screen or floating glass window |
 | Lossless AirPlay music | ✅ | ✅ |
 | Move, resize, zoom, keep on top, corner float | | ✅ |
+| Screenshots (<kbd>S</kbd>): PNG to Pictures\AirGlass + the picture on the clipboard | | ✅ |
+| Recording (<kbd>R</kbd>): MP4 to Videos\AirGlass, the sender's H.264 copied as-is, no sound | | ✅ |
 | PCs per key | | 3 |
+
+**Free trial:** the first mirroring session starts a 7-day Pro trial (`license::kTrialDays`; `trial` in
+`config.ini`). The tray menu shows the days left. When it ends, AirGlass shows the AirGlass Pro dialog once and then
+behaves as the free edition. Loopback tests and `--pro` builds skip the trial.
 
 In the free edition, every mirroring session opens full screen. Leaving full screen (<kbd>Esc</kbd>, <kbd>F</kbd>,
 double-click, the capsule button, or a control-pipe `float` layout) opens the **AirGlass Pro** dialog instead.
@@ -21,7 +27,7 @@ sequenceDiagram
     participant L as Lemon Squeezy
     U->>L: Buy AirGlass Pro (checkout)
     L-->>U: Receipt email with license key
-    U->>A: Tray → Unlock windowed mode → paste key
+    U->>A: Tray → Buy AirGlass Pro → paste key
     A->>L: POST /v1/licenses/activate (key, "AirGlass on <PC name>")
     L-->>A: activated, instance id, store/product
     A->>A: check store + product, save key + instance in config.ini
