@@ -100,3 +100,12 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 | 7 | If you have a sender that sets up no audio stream (its session has no `audio: … mirroring` line in the log), record from it. | Balloon "…(it sends no sound)…"; the MP4 has a picture track only, as in 1.0.5. |
 | 8 | Check the file in File Explorer → Properties → Details, or `ffprobe`. | Video H.264 at the sender's size; audio AAC stereo 160 kb/s. |
 | 9 | Free edition: press <kbd>R</kbd>. | The AirGlass Pro dialog, as before. |
+
+## AirGlass Pro dialog
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Free edition: tray → **Buy AirGlass Pro ($9.99)…**. | Top line "Buy once, use it on up to 3 PCs." Below: "AirGlass Pro adds the floating glass window, screenshots, recording with sound, drawing, region zoom, OBS mode and the allow-list for new devices. One-time $9.99, no subscription." The whole text is visible (not cut off) at 100 %, 150 % and 200 % display scaling; the buttons and key box sit below it, nothing overlaps. |
+| 2 | Press <kbd>D</kbd> (or <kbd>O</kbd>, <kbd>Z</kbd>, <kbd>S</kbd>, <kbd>R</kbd>) in the free edition. | The same dialog with the feature's own first line. |
+| 3 | Paste a valid key, Activate. | "Thank you! AirGlass Pro is unlocked: the glass window and all the Pro tools are yours on this PC." |
+| 4 | Fresh install (delete `trial=` under `[license]`), mirror for the first time. | Balloon "Your 7-day AirGlass Pro trial has started" naming T, S, R, D, Z and O. |

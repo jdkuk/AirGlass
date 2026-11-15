@@ -165,8 +165,8 @@ INT_PTR CALLBACK DialogProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (r.valid) {
                 st->key = key;
                 st->instanceId = r.instanceId;
-                MessageBoxW(h, L"Thank you! AirGlass Pro is unlocked: the mirroring window can now be moved, resized, "
-                               L"zoomed and kept on top.", L"AirGlass Pro", MB_ICONINFORMATION);
+                MessageBoxW(h, L"Thank you! AirGlass Pro is unlocked: the glass window and all the Pro tools are "
+                               L"yours on this PC.", L"AirGlass Pro", MB_ICONINFORMATION);
                 EndDialog(h, 1);
             } else {
                 SetDlgItemTextW(h, kIdStatus, Utf8ToWide(r.error).c_str());
@@ -206,18 +206,19 @@ void OpenBuyPage() { ShellExecuteW(nullptr, L"open", kBuyUrl, nullptr, nullptr, 
 
 bool ShowUpgradeDialog(HWND owner, const std::wstring& reason, std::string* key, std::string* instanceId) {
     std::wstring buy = std::wstring(L"Buy AirGlass Pro (") + kPrice + L")…";
-    std::wstring pitch = std::wstring(L"AirGlass Pro unlocks the mirroring window: move it, resize it, zoom, keep it "
-                                      L"on top or float it in a corner. One-time ") + kPrice + L", no subscription.";
+    std::wstring pitch = std::wstring(L"AirGlass Pro adds the floating glass window, screenshots, recording with "
+                                      L"sound, drawing, region zoom, OBS mode and the allow-list for new devices. "
+                                      L"One-time ") + kPrice + L", no subscription.";
     ui::Template t;
-    t.Dialog(L"AirGlass Pro", 260, 134, 8);
+    t.Dialog(L"AirGlass Pro", 260, 142, 8);
     t.Item(ui::kStatic, L"", kIdReason, 10, 8, 240, 18, SS_LEFT);
-    t.Item(ui::kStatic, pitch.c_str(), -1, 10, 28, 240, 26, SS_LEFT);
-    t.Item(ui::kButton, buy.c_str(), kIdBuy, 10, 58, 130, 15, BS_PUSHBUTTON | WS_TABSTOP);
-    t.Item(ui::kStatic, L"Already bought it? Paste the license key from your receipt email:", -1, 10, 82, 240, 10, SS_LEFT);
-    t.Item(ui::kEdit, L"", kIdKey, 10, 94, 240, 13, ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP);
-    t.Item(ui::kStatic, L"", kIdStatus, 10, 113, 136, 18, SS_LEFT);
-    t.Item(ui::kButton, L"Activate", IDOK, 150, 113, 50, 15, BS_DEFPUSHBUTTON | WS_TABSTOP);
-    t.Item(ui::kButton, L"Not now", IDCANCEL, 204, 113, 46, 15, BS_PUSHBUTTON | WS_TABSTOP);
+    t.Item(ui::kStatic, pitch.c_str(), -1, 10, 28, 240, 34, SS_LEFT);
+    t.Item(ui::kButton, buy.c_str(), kIdBuy, 10, 66, 130, 15, BS_PUSHBUTTON | WS_TABSTOP);
+    t.Item(ui::kStatic, L"Already bought it? Paste the license key from your receipt email:", -1, 10, 90, 240, 10, SS_LEFT);
+    t.Item(ui::kEdit, L"", kIdKey, 10, 102, 240, 13, ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP);
+    t.Item(ui::kStatic, L"", kIdStatus, 10, 121, 136, 18, SS_LEFT);
+    t.Item(ui::kButton, L"Activate", IDOK, 150, 121, 50, 15, BS_DEFPUSHBUTTON | WS_TABSTOP);
+    t.Item(ui::kButton, L"Not now", IDCANCEL, 204, 121, 46, 15, BS_PUSHBUTTON | WS_TABSTOP);
     DialogState st;
     st.reason = reason;
     INT_PTR rc = DialogBoxIndirectParamW(GetModuleHandleW(nullptr), t.Get(), owner, DialogProc, LPARAM(&st));

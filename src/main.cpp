@@ -561,7 +561,7 @@ void App::ShowTrayMenu() {
     case kMenuLogs: ShellExecuteW(nullptr, L"open", AppDataDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case kMenuShow: glass_.BringToFront(); break;
     case kMenuRename: RenameReceiver(); break;
-    case kMenuPro: ShowUpgrade(L"Pro adds the glass window, screenshots, recording, OBS mode and region zoom."); break;
+    case kMenuPro: ShowUpgrade(L"Buy once, use it on up to 3 PCs."); break;
     case kMenuShot:
         if (glass_.Pro()) TakeScreenshot();
         else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProScreenshot, 0);
@@ -649,8 +649,9 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             glass_.SetPro(on);
             if (starting)
                 Balloon(L"Your 7-day AirGlass Pro trial has started",
-                        L"Move, resize and zoom the glass window, keep it on top (T), take screenshots (S) and record "
-                        L"(R). Full-screen mirroring stays free after the trial.");
+                        L"Move and resize the glass window, keep it on top (T), take screenshots (S), record with sound "
+                        L"(R), draw (D), zoom into a region (Z) and use OBS mode (O). Full-screen mirroring stays free "
+                        L"after the trial.");
             else if (!on && !cfg_.trialEndShown) {
                 cfg_.trialEndShown = true;
                 cfg_.Save();
