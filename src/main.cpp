@@ -1244,7 +1244,7 @@ void App::ToggleRecording(GlassWindow& g) {
     std::wstring file = MediaFile(FOLDERID_Videos, L".mp4", &g == &glass_ ? L"" : L" (2)");
     if (g.Rec().Start(file, &err))
         Balloon(L"Recording", std::wstring(g.Rec().HasSound() ? L"Recording the mirrored screen and its sound"
-                                                              : L"Recording the mirrored screen (it sends no sound)") +
+                                                              : L"Recording the mirrored screen (picture only)") +
                                   L" to Videos\\AirGlass. Press R or use the tray menu to stop.");
     else
         Balloon(L"Couldn't start recording", Utf8ToWide(err));

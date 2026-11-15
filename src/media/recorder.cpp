@@ -9,6 +9,7 @@ extern "C" {
 namespace {
 
 constexpr size_t kMaxGopBytes = size_t(256) << 20;  // cache cap; beyond it we wait for the next keyframe
+constexpr int kMirrorAudioRate = 44100;  // iOS screen mirroring's sound: the track's rate before any sound starts
 // Sound timing (seconds). Arriving sound is placed on the track by its arrival time, like the video. Jitter
 // within kDriftLimit is absorbed; a smoothed offset beyond it (the sender's clock running slightly fast or
 // slow) is corrected by a little silence or a dropped block; a jump beyond kGap (sound that starts late,
@@ -100,7 +101,8 @@ void Recorder::AudioStarted(int sampleRate) {
     std::lock_guard<std::mutex> lk(mu_);
     ++audioStreams_;
     audioRate_ = sampleRate;
-    if (fmt_ && !aenc_) LOGI("record: sound started after this recording began; it stays picture-only");
+    if (fmt_ && !aenc_) LOGI("record: sound started, but this recording has no sound track");
+    else if (fmt_ && sampleRate == trackRate_) LOGI("record: sound started; it joins the recording in sync");
 }
 
 void Recorder::AudioStopped() {
@@ -167,7 +169,8 @@ bool Recorder::OpenLocked(std::string* error) {
     par->extradata = static_cast<uint8_t*>(av_mallocz(config_.size() + AV_INPUT_BUFFER_PADDING_SIZE));
     std::memcpy(par->extradata, config_.data(), config_.size());
     par->extradata_size = int(config_.size());
-    if (audioStreams_ > 0 && audioRate_ > 0) OpenAudioLocked();
+    // A sound track even before any sound: it is silent until the sound starts, then joins in sync.
+    OpenAudioLocked(audioStreams_ > 0 && audioRate_ > 0 ? audioRate_ : kMirrorAudioRate);
     fmt_->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;  // nothing is negative; never shift a track
     if ((rc = avio_open(&fmt_->pb, file.c_str(), AVIO_FLAG_WRITE)) < 0) {
         *error = "can't create the file: " + AvError(rc);
@@ -202,14 +205,14 @@ bool Recorder::OpenLocked(std::string* error) {
     apending_.clear();
     int64_t tick = 0;  // the cache: the decoder runs through it in the first instant and shows its last picture
     for (const Packet& p : gop_) WriteLocked(p, tick++);
-    LOGI("record: started %dx%d%s -> %s (%zu cached packets)", w_, h_,
-         aenc_ ? (", sound " + std::to_string(trackRate_) + " Hz AAC").c_str() : ", no sound in this session",
-         file.c_str(), gop_.size());
+    std::string sound = ", no sound track";
+    if (aenc_) sound = ", sound " + std::to_string(trackRate_) + " Hz AAC" + (audioStreams_ > 0 ? "" : " (silent so far)");
+    LOGI("record: started %dx%d%s -> %s (%zu cached packets)", w_, h_, sound.c_str(), file.c_str(), gop_.size());
     return true;
 }
 
 // The sound track: FFmpeg's own AAC-LC encoder (LGPL, part of every FFmpeg build), stereo, 160 kb/s.
-bool Recorder::OpenAudioLocked() {
+bool Recorder::OpenAudioLocked(int rate) {
     const AVCodec* codec = avcodec_find_encoder_by_name("aac");
     if (!codec) {
         LOGW("record: FFmpeg has no AAC encoder; recording without sound");
@@ -217,10 +220,10 @@ bool Recorder::OpenAudioLocked() {
     }
     aenc_ = avcodec_alloc_context3(codec);
     aenc_->sample_fmt = AV_SAMPLE_FMT_FLTP;
-    aenc_->sample_rate = audioRate_;
+    aenc_->sample_rate = rate;
     av_channel_layout_default(&aenc_->ch_layout, 2);
     aenc_->bit_rate = 160000;
-    aenc_->time_base = AVRational{1, audioRate_};
+    aenc_->time_base = AVRational{1, rate};
     if (fmt_->oformat->flags & AVFMT_GLOBALHEADER) aenc_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     int rc = avcodec_open2(aenc_, codec, nullptr);
     if (rc < 0) {
@@ -231,7 +234,7 @@ bool Recorder::OpenAudioLocked() {
     aframe_ = av_frame_alloc();
     if (aframe_) {
         aframe_->format = AV_SAMPLE_FMT_FLTP;
-        aframe_->sample_rate = audioRate_;
+        aframe_->sample_rate = rate;
         av_channel_layout_copy(&aframe_->ch_layout, &aenc_->ch_layout);
         aframe_->nb_samples = aenc_->frame_size;
     }
@@ -242,7 +245,7 @@ bool Recorder::OpenAudioLocked() {
     }
     ast_->time_base = aenc_->time_base;
     avcodec_parameters_from_context(ast_->codecpar, aenc_);
-    trackRate_ = audioRate_;
+    trackRate_ = rate;
     return true;
 }
 

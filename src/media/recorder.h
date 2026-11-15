@@ -9,8 +9,9 @@
 // A device sends no frames while its screen is still, so each picture lasts until the next one: the
 // newest packet is held back until the next arrives, and Stop() gives it a duration up to the moment
 // of the stop, so a recording is as long as the wall-clock time it ran.
-// Sound: when the session has a mirroring audio stream, its decoded PCM is encoded to AAC-LC (FFmpeg's
-// built-in "aac" encoder) as a second track. Both tracks are timed by the same clock, the arrival time on
+// Sound: every recording gets a second track, AAC-LC (FFmpeg's built-in "aac" encoder), at the rate of the
+// session's mirroring audio stream, or 44.1 kHz stereo (what iOS mirroring sends) when no sound has started yet;
+// it stays silent until the sound arrives, then carries the decoded PCM. Both tracks are timed by the same clock, the arrival time on
 // this PC, so they stay in sync; gaps (sound that starts late, pauses, lost packets) become silence.
 #pragma once
 
@@ -33,7 +34,7 @@ public:
     // Size of the decoded picture, needed for the MP4 header (renderer thread).
     void SetFrameSize(int w, int h);
     // Mirroring audio (audio threads): a stream started or stopped, and each decoded block (interleaved
-    // stereo float). A recording gets a sound track if a stream is running when it starts.
+    // stereo float). Sound at another rate than the recording's track leaves the rest of it silent.
     void AudioStarted(int sampleRate);
     void AudioStopped();
     void FeedAudio(const float* pcm, size_t frames);
@@ -56,7 +57,7 @@ private:
         bool key = false;
     };
     bool OpenLocked(std::string* error);
-    bool OpenAudioLocked();
+    bool OpenAudioLocked(int rate);
     void WriteLocked(const Packet& p, int64_t pts);  // pts in 90 kHz ticks
     void WriteHeldLocked(int64_t until);             // the held packet, lasting until `until`
     void WritePacketLocked(AVPacket* pkt);

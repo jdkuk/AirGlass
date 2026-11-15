@@ -122,7 +122,8 @@ Use an iPhone that has never connected to this PC (or tray → **Forget paired d
 | 4 | Pause the phone's video for 10 s mid-recording, then resume. | Silence for the pause, then sound in sync again (no drift after the gap). |
 | 5 | Record for 15 minutes with speech. | Still in sync at the end (within about a frame or two). |
 | 6 | Rotate the phone while recording. | The recording finishes by itself as before; its sound runs to the end of its picture. |
-| 7 | If you have a sender that sets up no audio stream (its session has no `audio: … mirroring` line in the log), record from it. | Balloon "…(it sends no sound)…"; the MP4 has a picture track only, as in 1.0.5. |
+| 7 | Start mirroring and record straight away, before any sound has played on the phone (check the log: no `audio: … mirroring` line yet). After 10 s play a video with sound; stop after another 10 s. | Balloon "Recording the mirrored screen and its sound…". Log: `record: started …, sound 44100 Hz AAC (silent so far)`, then `record: sound started; it joins the recording in sync`. The MP4 is silent for 10 s, then has the sound, in sync with the picture (no "stays picture-only" line any more). |
+| 7a | Record from a sender that never sends sound. | The MP4 has a picture and a silent sound track, as long as the picture. |
 | 8 | Check the file in File Explorer → Properties → Details, or `ffprobe`. | Video H.264 at the sender's size; audio AAC stereo 160 kb/s. |
 | 9 | Free edition: press <kbd>R</kbd>. | The AirGlass Pro dialog, as before. |
 | 10 | Leave the phone on a still screen (home screen, nothing moving) for 2 minutes, press <kbd>R</kbd>, wait about 8 s without touching the phone, press <kbd>R</kbd>. | The MP4 is about 8 s long (not minutes) in Films & TV, VLC and a browser tab, and shows the home screen from the first instant to the end. Log: `record: finished (8.x s)`; the tray's "Stop recording (0:0x)" counted up while nothing moved. |

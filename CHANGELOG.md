@@ -58,7 +58,9 @@ All notable changes to AirGlass are documented here. The format is based on
 ### Changed
 - Pro: recordings now have sound. The mirrored session's audio is encoded to AAC (FFmpeg's built-in encoder) as a
   second track, kept in sync with the picture by the same clock; the picture is still copied without re-encoding.
-  Sound that starts late or pauses becomes silence; a device that sends no sound gives a picture-only MP4 as before.
+  Sound that starts late or pauses becomes silence. Every recording gets the sound track, even one started before
+  any sound plays: it is silent (44.1 kHz stereo, as iOS mirroring sends) until the sound starts, then the sound
+  joins in sync. Sound at another rate starting later leaves the rest of the recording silent (logged).
 - The AirGlass Pro dialog now lists what Pro includes: the floating glass window, screenshots, recording with sound,
   drawing, region zoom, OBS mode and the allow-list. The trial's welcome balloon names the new shortcuts.
 

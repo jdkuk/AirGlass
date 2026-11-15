@@ -10,8 +10,8 @@
 //   airglass_test resampler                 resampler quality vs. the old linear interpolation
 //   airglass_test srp                       SRP-6a for PIN pairing: RFC 5054 vectors and the AirPlay variant
 //   airglass_test pin <code> [--port P]     PIN pairing end to end (receiver started with AIRGLASS_TEST_PIN=<code>)
-//   airglass_test record <h264.mp4> <dir>   Pro recorder: picture + sound in sync, sound starting late, no sound,
-//                                           a still screen (no frames after the click)
+//   airglass_test record <h264.mp4> <dir>   Pro recorder: picture + sound in sync, sound starting late (also after
+//                                           the click), no sound (a silent track), a still screen
 //   airglass_test resolve <instance> <type> one-shot mDNS SRV lookup
 //   airglass_test license activate|validate <key> <pc name|instance id>
 //                                           Lemon Squeezy license round trip (AirGlass Pro)
@@ -1502,8 +1502,9 @@ static bool ReadBack(const std::string& path, RecordResult& r) {
 // One recording: video from t=0, the recording starts at about `startAt` (*startedAt: exactly), sound (if any)
 // from `toneFrom` seconds. stillFor >= 0: no more frames after the click (a still screen), and the recording stops
 // that long after it; *ranFor is the wall-clock time from Start to Stop.
+// audioAfterStart: the sound stream starts only after the click (the recording has no sound yet when it starts).
 static bool RecordOnce(Media& m, const std::string& out, double startAt, double toneFrom, bool sound, double* startedAt,
-                       double stillFor = -1, double* ranFor = nullptr) {
+                       double stillFor = -1, double* ranFor = nullptr, bool audioAfterStart = false) {
     // avcC -> Annex-B SPS/PPS
     const std::vector<uint8_t>& a = m.avcc;
     std::vector<uint8_t> config;
@@ -1522,12 +1523,16 @@ static bool RecordOnce(Media& m, const std::string& out, double startAt, double 
     av_seek_frame(m.fmt, m.vIdx, 0, AVSEEK_FLAG_BACKWARD);
     Recorder rec;
     rec.SetFrameSize(m.w, m.h);
-    std::atomic<bool> done{false};
+    std::atomic<bool> done{false}, recording{false};
     double t0 = NowSeconds();
     std::thread audio;
     if (sound) {
-        rec.AudioStarted(44100);
+        if (!audioAfterStart) rec.AudioStarted(44100);
         audio = std::thread([&] {
+            if (audioAfterStart) {
+                while (!recording && !done) Sleep(5);
+                rec.AudioStarted(44100);
+            }
             std::vector<float> block(480 * 2);
             int64_t n = 0;
             while (!done) {
@@ -1565,6 +1570,7 @@ static bool RecordOnce(Media& m, const std::string& out, double startAt, double 
             if (!started && NowSeconds() - t0 >= startAt) {
                 *startedAt = NowSeconds() - t0;
                 started = rec.Start(Utf8ToWide(out), &err);
+                recording = started;
                 if (!started) printf("[record] start failed: %s\n", err.c_str());
                 else printf("[record] started at %.3f s, sound track: %s\n", *startedAt, rec.HasSound() ? "yes" : "no");
             }
@@ -1598,9 +1604,23 @@ static int CmdRecord(const std::string& in, const std::string& dir) {
     if (r1.streams != 2 || !r1.h264 || !r1.aac) return Fail("expected an H.264 and an AAC track");
     if (std::fabs(r1.audioEnd - r1.videoEnd) > 0.3) return Fail("sound and picture end apart");
     if (r1.toneAt < 0 || std::fabs(r1.toneAt - expected) > 0.1) return Fail("sound out of sync with the picture");
+    // Sound that starts only after the click still gets on the recording, in sync.
+    std::string lateSound = dir + "\\rec_latesound.mp4";
+    RecordResult r4;
+    if (!RecordOnce(m, lateSound, startAt, toneFrom, true, &started, -1, nullptr, true) || !ReadBack(lateSound, r4))
+        return Fail("record with sound starting after the click");
+    expected = toneFrom - started - 480.0 / 44100.0;
+    printf("[record] sound starting after the click: %d streams, picture ends %.2f s, sound ends %.2f s, tone at %.3f s "
+           "(expected %.3f)\n", r4.streams, r4.videoEnd, r4.audioEnd, r4.toneAt, expected);
+    if (r4.streams != 2 || !r4.aac) return Fail("no sound track when the sound started after the click");
+    if (r4.toneAt < 0 || std::fabs(r4.toneAt - expected) > 0.1) return Fail("late sound out of sync with the picture");
+    // No sound at all: a silent sound track as long as the picture.
     if (!RecordOnce(m, noSound, startAt, 0, false, &started) || !ReadBack(noSound, r2)) return Fail("record without sound");
-    printf("[record] without sound: %d stream, picture ends %.2f s\n", r2.streams, r2.videoEnd);
-    if (r2.streams != 1 || !r2.h264) return Fail("expected only an H.264 track");
+    printf("[record] without sound: %d streams, picture ends %.2f s, sound ends %.2f s, tone %s\n", r2.streams,
+           r2.videoEnd, r2.audioEnd, r2.toneAt < 0 ? "none" : "found");
+    if (r2.streams != 2 || !r2.h264 || !r2.aac) return Fail("expected an H.264 and a (silent) AAC track");
+    if (r2.toneAt >= 0) return Fail("the silent track isn't silent");
+    if (std::fabs(r2.audioEnd - r2.videoEnd) > 0.3) return Fail("the silent track and the picture end apart");
     // A still screen: the device sends nothing after the click. The frames cached since the last keyframe must not
     // make the file longer (nor start it before the click), and the recording must last as long as it ran, with
     // its sound in sync.
