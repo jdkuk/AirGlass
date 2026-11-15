@@ -1886,7 +1886,8 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     AppendMenuW(m, MF_STRING | (pinned_ ? MF_CHECKED : 0), 1, L"Keep on top\tP");
     AppendMenuW(m, MF_STRING | (fullscreen_ ? MF_CHECKED : 0), 2, L"Full screen\tF");
     AppendMenuW(m, MF_STRING | (ObsMode() ? MF_CHECKED : 0), 4, pro_ ? L"OBS mode\tO" : L"OBS mode (Pro)…");
-    AppendMenuW(m, MF_STRING, 5, !pro_ ? L"Zoom into a region (Pro)…" : Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
+    AppendMenuW(m, MF_STRING, 5,
+                !pro_ ? L"Zoom into a region (Pro)…" : Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, 3, L"Disconnect");
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd_, nullptr);

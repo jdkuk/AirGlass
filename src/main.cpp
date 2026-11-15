@@ -36,7 +36,7 @@ constexpr UINT kMsgUpgrade = WM_APP + 10;     // free edition: a Pro feature was
 constexpr UINT kMsgLicenseRevoked = WM_APP + 11;
 constexpr UINT kMsgTrialEnded = WM_APP + 12;
 constexpr UINT kMsgRecordStopped = WM_APP + 13;  // lParam: std::wstring* (finished file), recorder thread
-constexpr UINT kMsgRenamed = WM_APP + 14;        // lParam: std::string* (the new name, checked on the network)
+constexpr UINT kMsgRenamed = WM_APP + 14;        // lParam: RenameResult* (checked on the network)
 constexpr UINT_PTR kTimerNowPlaying = 1;
 constexpr UINT_PTR kTimerTvGrace = 2;
 constexpr UINT_PTR kTimerNpDebounce = 3;
@@ -56,6 +56,9 @@ struct MediaJob {
 };
 struct MediaResult {
     std::string rid, error;
+};
+struct RenameResult {
+    std::string wanted, name;  // name = wanted, or wanted + " PC" if another device already uses it
 };
 
 const char* kCornerNames[4] = {"br", "bl", "tr", "tl"};
@@ -196,7 +199,7 @@ private:
     bool StartMdns();
     // "Rename this PC…" (UI thread): the dialog, then a network check off the UI thread, then ApplyName.
     void RenameReceiver();
-    void ApplyName(const std::string& name);
+    void ApplyName(const std::string& wanted, const std::string& name);
 
     // TV Mode control pipe (UI thread).
     void OnPipeCommand(const std::string& line);
@@ -230,7 +233,7 @@ private:
     std::string name_;
     ReceiverInfo ri_;  // as advertised (mDNS) and served (/info)
     std::thread renameThread_;
-    bool renaming_ = false;
+    bool renaming_ = false;  // the dialog is open or the network check is running
     bool loopback_ = false, upgradeOpen_ = false;
     int promoteTries_ = 0;
 
@@ -325,29 +328,33 @@ bool App::StartMdns() {
 }
 
 void App::RenameReceiver() {
+    // The tray still reaches msgWnd_ while a dialog is open, so this guards against a second one.
     if (renaming_ || cfg_.nameManaged) return;
+    renaming_ = true;
     std::wstring name = Utf8ToWide(cfg_.name);
     HWND owner = glass_.Visible() ? glass_.Hwnd() : msgWnd_;
-    if (!ui::ShowRenameDialog(owner, iconBig_, &name)) return;
-    std::string wanted = SanitizeReceiverName(WideToUtf8(name));
-    if (wanted.empty() || wanted == cfg_.name) return;
+    std::string wanted;
+    if (ui::ShowRenameDialog(owner, iconBig_, &name)) wanted = SanitizeReceiverName(WideToUtf8(name));
+    if (wanted.empty() || wanted == cfg_.name) {
+        renaming_ = false;
+        return;
+    }
     if (loopback_) {
-        ApplyName(wanted);
+        ApplyName(wanted, wanted);
         return;
     }
     // Browsing the network blocks for about a second: do it off the UI thread.
-    renaming_ = true;
     if (renameThread_.joinable()) renameThread_.join();
     renameThread_ = std::thread([wanted, own = cfg_.name, target = msgWnd_] {
         std::vector<std::string> taken;
         for (auto& t : MdnsResponder::BrowseReceiverNames(1.2))
             if (_stricmp(t.c_str(), own.c_str()) != 0) taken.push_back(t);  // our own answer, under the old name
-        auto* name = new std::string(UniqueReceiverName(wanted, taken));
-        PostMessageW(target, kMsgRenamed, 0, reinterpret_cast<LPARAM>(name));
+        auto* r = new RenameResult{wanted, UniqueReceiverName(wanted, taken)};
+        PostMessageW(target, kMsgRenamed, 0, reinterpret_cast<LPARAM>(r));
     });
 }
 
-void App::ApplyName(const std::string& name) {
+void App::ApplyName(const std::string& wanted, const std::string& name) {
     renaming_ = false;
     if (name == cfg_.name) return;
     LOGI("receiver: renamed \"%s\" -> \"%s\"", cfg_.name.c_str(), name.c_str());
@@ -359,7 +366,9 @@ void App::ApplyName(const std::string& name) {
     if (!loopback_ && !StartMdns()) LOGE("receiver: mDNS restart failed after renaming");
     UpdateTrayTip();
     EmitState();
-    Balloon(L"Renamed", L"This PC now appears as “" + Utf8ToWide(name) + L"” in Screen Mirroring.");
+    std::wstring text = L"This PC now appears as “" + Utf8ToWide(name) + L"” in Screen Mirroring.";
+    if (name != wanted) text = L"Another device here is already called “" + Utf8ToWide(wanted) + L"”. " + text;
+    Balloon(L"Renamed", text);
 }
 
 void App::Balloon(const std::wstring& title, const std::wstring& text) {
@@ -622,8 +631,8 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case kMsgRenamed: {
-        std::unique_ptr<std::string> name(reinterpret_cast<std::string*>(l));
-        ApplyName(*name);
+        std::unique_ptr<RenameResult> r(reinterpret_cast<RenameResult*>(l));
+        ApplyName(r->wanted, r->name);
         return 0;
     }
     case kMsgLicenseRevoked:
