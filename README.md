@@ -139,7 +139,8 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 | Right-click | menu |
 
 Rotating the device morphs the window between portrait and landscape. Audio plays through the default Windows output,
-and the device's volume buttons control it. Tray icon (right-click): *Start with Windows*, *Open log folder*, *Quit*.
+and the device's volume buttons control it. Tray icon (right-click): *Rename this PC…*, *OBS mode*, *Zoom into a region*,
+*Start with Windows*, *Open log folder*, *Quit*.
 
 </details>
 
