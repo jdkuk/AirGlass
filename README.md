@@ -99,6 +99,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | Record the mirrored screen to MP4, original quality, no re-encode (<kbd>R</kbd>) | | ✅ |
 | OBS mode: a chroma-key green window for OBS Window Capture (<kbd>O</kbd>) | | ✅ |
 | Region zoom: drag a rectangle to zoom into part of the picture (<kbd>Z</kbd>) | | ✅ |
+| Draw on screen: pen, arrow and highlighter on the mirrored picture (<kbd>D</kbd>) | | ✅ |
 | Use on up to 3 PCs | | ✅ |
 
 **Every install starts with a free 7-day Pro trial** from your first mirroring session, so you can try the window,
@@ -136,11 +137,12 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 | Hover | glass controls: ✕ disconnect · 📌 keep on top · ⤢ full screen |
 | <kbd>P</kbd> | keep on top |
 | <kbd>O</kbd> | OBS mode: chroma-key green round the picture, no glass, window title "AirGlass (OBS)" |
+| <kbd>D</kbd> | draw on the picture: drag to draw · <kbd>P</kbd> pen · <kbd>A</kbd> arrow · <kbd>H</kbd> highlighter · <kbd>1</kbd>–<kbd>4</kbd> red, yellow, green, blue · <kbd>Backspace</kbd> undo · <kbd>C</kbd> clear · <kbd>D</kbd> or <kbd>Esc</kbd> stops drawing |
 | Right-click | menu |
 
 Rotating the device morphs the window between portrait and landscape. Audio plays through the default Windows output,
 and the device's volume buttons control it. Tray icon (right-click): *Rename this PC…*, *OBS mode*, *Zoom into a region*,
-*Start with Windows*, *Open log folder*, *Quit*.
+*Draw on screen*, *Start with Windows*, *Open log folder*, *Quit*.
 
 </details>
 

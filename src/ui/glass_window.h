@@ -70,8 +70,8 @@ public:
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
     // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
-    // kProObs (OBS mode), kProZoom (region zoom).
-    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4 };
+    // kProObs (OBS mode), kProZoom (region zoom), kProDraw (drawing on the picture).
+    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4, kProDraw = 5 };
     std::function<void(int feature)> onUpgradeRequested;
 
     // Pro: screenshot of the glass window (PNG with transparency, saved by the caller's path) and the
@@ -94,6 +94,15 @@ public:
     // the picture; Z again, Esc or a double-click zooms back out. Screenshots and OBS mode show the zoomed view.
     void ToggleRegionZoom();
     bool Zoomed() const { return zoomS_ < 0.999f; }
+    // Pro: draw on the picture. D (or the menus) toggles draw mode, where drags draw instead of moving the window.
+    // P pen, A arrow, H highlighter; 1-4 red, yellow, green, blue; Backspace undoes a stroke, C clears them all.
+    // Strokes are kept in picture coordinates, so they stay on the picture when the window moves, resizes or
+    // zooms; they stay after draw mode ends and clear on a new session or a rotation. Screenshots and OBS mode
+    // show them; recordings copy the sender's stream, so they don't.
+    void ToggleDrawMode();
+    bool DrawMode() const { return drawMode_; }
+    bool HasDrawing();
+    void ClearDrawing();
 
     // FrameSink (decoder threads)
     ID3D11Device* GpuDevice() override { return dev_.Get(); }
@@ -137,6 +146,8 @@ private:
         float zoomCx = 0.5f, zoomCy = 0.5f, zoomS = 1.0f;  // region zoom: centre and size, in picture uv
         bool selOn = false;
         RectF sel;  // region-zoom rectangle being dragged (window px)
+        bool drawHint = false;  // draw mode: show "Drawing (D to exit)"
+        int drawTool = 0, drawColor = 0;
     };
     struct Anim {
         Spring x0, y0, x1, y1, appear, fs, controls, dropX, dropA, press, reveal;
@@ -168,6 +179,28 @@ private:
     void ZoomToSelection(const RectF& sel);
     void SetSelection(const RectF* sel);  // nullptr hides it
     RectF SelectionRect(POINT a, POINT b);
+    // Drawing (UI thread, except RenderInkLocked)
+    enum DrawTool { kPen = 0, kArrow = 1, kHighlighter = 2 };
+    struct Stroke {
+        int tool = kPen, color = 0;
+        float width = 0;                  // picture units (the picture is 1 high)
+        std::vector<D2D1_POINT_2F> pts;   // picture units: x 0..width/height, y 0..1
+        bool open = true;                 // still being drawn
+        ComPtr<ID2D1PathGeometry> geo;    // built by the render thread once the stroke is finished
+    };
+    void SetDrawMode(bool on);
+    void SetDrawTool(int tool);
+    void SetDrawColor(int color);
+    void PublishDrawHint();
+    bool PictureFromClient(float x, float y, D2D1_POINT_2F* pt, float* pxPerUnit);
+    void BeginStroke(float x, float y);
+    void ExtendStroke(float x, float y);
+    void EndStroke();
+    void UndoStroke();
+    HCURSOR DrawCursor();
+    ComPtr<ID2D1PathGeometry> StrokeGeometry(const Stroke& s);
+    // Draws the strokes (and the draw-mode hint) into ink_ for this frame's layout; false if there is nothing.
+    bool RenderInkLocked(const Layout& L, const float zoom[4], const Shared& s, bool hint);
     void UpdateTvBoost();
 
     // Geometry (UI thread)
@@ -246,6 +279,15 @@ private:
     ComPtr<ID3D11Texture2D> label_;
     ComPtr<ID3D11ShaderResourceView> labelSrv_;
     int labelW_ = 0, labelH_ = 0;
+    // Drawing layer (render thread): window-sized, sampled by the compose pass under the picture's controls.
+    ComPtr<ID3D11Texture2D> ink_;
+    ComPtr<ID3D11ShaderResourceView> inkSrv_;
+    ComPtr<ID2D1RenderTarget> inkRt_;
+    ComPtr<ID2D1SolidColorBrush> inkBrush_;
+    ComPtr<ID2D1StrokeStyle> inkStyle_;
+    ComPtr<IDWriteTextFormat> hintFormat_;
+    int inkW_ = 0, inkH_ = 0;
+    float hintDp_ = 0;  // hintFormat_ was made for this dp
 
     // Window / UI thread state
     HWND hwnd_ = nullptr;
@@ -273,6 +315,12 @@ private:
     bool zoomArmed_ = false, zoomSelecting_ = false;  // Z pressed / dragging the zoom rectangle
     POINT zoomFrom_{};
     float zoomCx_ = 0.5f, zoomCy_ = 0.5f, zoomS_ = 1.0f;  // target region (picture uv), 1 = the whole picture
+    bool drawMode_ = false, drawing_ = false;  // draw mode on / a stroke is being dragged
+    int drawTool_ = kPen, drawColor_ = 0;
+    POINT lastInk_{};
+    HCURSOR drawCursors_[4] = {};
+    std::mutex drawMu_;            // guards strokes_ (UI thread edits, render thread draws)
+    std::vector<Stroke> strokes_;
     // TV Mode
     bool tv_ = false, sessionLive_ = false, tvHidden_ = false, tvHiding_ = false, tvFree_ = false;
     TvLayout tvDefaults_, tvLayout_;
@@ -298,6 +346,7 @@ private:
     RectF pubSlab_;
     Layout pubLayout_;
     float pubControls_ = 0;
+    float pubZoom_[4] = {0, 0, 1, 1};  // the part of the picture on screen this frame (uv)
     std::atomic<bool> needFrame_{false};
     std::atomic<bool> quit_{false};
     Event wake_;

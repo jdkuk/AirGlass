@@ -43,7 +43,7 @@ constexpr UINT_PTR kTimerNpDebounce = 3;
 constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer has registered our tray icon
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
-constexpr UINT kMenuObs = 110, kMenuZoom = 111;
+constexpr UINT kMenuObs = 110, kMenuZoom = 111, kMenuDraw = 112;
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 struct StartEvent {
@@ -408,6 +408,8 @@ void App::ShowTrayMenu() {
                     pro ? L"OBS mode\tO" : L"OBS mode (Pro)…");
         AppendMenuW(m, MF_STRING, kMenuZoom,
                     !pro ? L"Zoom into a region (Pro)…" : glass_.Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
+        AppendMenuW(m, MF_STRING | (glass_.DrawMode() ? MF_CHECKED : 0), kMenuDraw,
+                    pro ? L"Draw on screen\tD" : L"Draw on screen (Pro)…");
     }
     AppendMenuW(m, MF_STRING, kMenuMediaFolder, L"Open screenshots folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -465,6 +467,7 @@ void App::ShowTrayMenu() {
         break;
     case kMenuObs: glass_.ToggleObsMode(); break;  // these ask for Pro in the free edition
     case kMenuZoom: glass_.ToggleRegionZoom(); break;
+    case kMenuDraw: glass_.ToggleDrawMode(); break;
     case kMenuMediaFolder: {
         std::wstring dir = MediaFile(FOLDERID_Pictures, nullptr);
         ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -614,6 +617,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                               : w == GlassWindow::kProRecord   ? L"Recording is"
                               : w == GlassWindow::kProObs      ? L"OBS mode is"
                               : w == GlassWindow::kProZoom     ? L"Region zoom is"
+                              : w == GlassWindow::kProDraw     ? L"Drawing on screen is"
                                                                : L"Windowed mode is";
         std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
         reason += cfg_.trialStarted ? L" Your free trial has ended." : L" The free edition mirrors full screen.";

@@ -27,7 +27,7 @@ constexpr float kMinZoom = 0.125f;  // region zoom: at most 8x
 
 struct ComposeCB {
     float view[4], slab[4], video[4], geom[4], appear[4], shadow[4], vinfo[4], pill[4], pillInfo[4], drop[4], btnX[4],
-        btnState[4], icons[4], label[4], labelInfo[4], tv0[4], tv1[4], mode[4], zoom[4], sel[4];
+        btnState[4], icons[4], label[4], labelInfo[4], tv0[4], tv1[4], mode[4], zoom[4], sel[4], ink[4];
 };
 struct ConvertCB {
     float row0[4], row1[4], row2[4], info[4];
@@ -124,6 +124,62 @@ RectF FitAspect(const RectF& box, float aspect) {
 
 bool SameRect(const RECT& a, const RECT& b) {
     return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom;
+}
+
+// Drawing colours (keys 1-4) and tools.
+constexpr D2D1_COLOR_F kInkColors[4] = {
+    {1.00f, 0.23f, 0.19f, 1}, {1.00f, 0.80f, 0.00f, 1}, {0.20f, 0.78f, 0.35f, 1}, {0.04f, 0.52f, 1.00f, 1}};
+const wchar_t* const kToolNames[3] = {L"Pen", L"Arrow", L"Highlighter"};
+
+// Draw-mode cursor: a dot in the current colour, ringed white and dark so it shows on any picture.
+HCURSOR MakeDotCursor(const D2D1_COLOR_F& c, int size) {
+    std::vector<uint32_t> px(size_t(size) * size);
+    float cx = size * 0.5f, r = std::max(3.0f, size * 0.11f);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            float cr = 0, cg = 0, cb = 0, ca = 0;
+            for (int sy = 0; sy < 4; ++sy) {
+                for (int sx = 0; sx < 4; ++sx) {
+                    float d = std::hypot(x + (sx + 0.5f) / 4 - cx, y + (sy + 0.5f) / 4 - cx);
+                    if (d < r) cr += c.r, cg += c.g, cb += c.b, ca += 1;
+                    else if (d < r + 1.6f) cr += 1, cg += 1, cb += 1, ca += 1;
+                    else if (d < r + 2.6f) ca += 0.6f;
+                }
+            }
+            float a = ca / 16.0f;  // straight (non-premultiplied) alpha for cursor bitmaps
+            auto ch = [&](float v) { return uint32_t(std::lround(std::clamp(ca > 0 ? v / ca : 0.0f, 0.0f, 1.0f) * 255)); };
+            px[size_t(y) * size + x] = (uint32_t(std::lround(a * 255)) << 24) | (ch(cr) << 16) | (ch(cg) << 8) | ch(cb);
+        }
+    }
+    BITMAPV5HEADER bi{};
+    bi.bV5Size = sizeof(bi);
+    bi.bV5Width = size;
+    bi.bV5Height = -size;
+    bi.bV5Planes = 1;
+    bi.bV5BitCount = 32;
+    bi.bV5Compression = BI_BITFIELDS;
+    bi.bV5RedMask = 0x00FF0000;
+    bi.bV5GreenMask = 0x0000FF00;
+    bi.bV5BlueMask = 0x000000FF;
+    bi.bV5AlphaMask = 0xFF000000;
+    HDC dc = GetDC(nullptr);
+    void* bits = nullptr;
+    HBITMAP color = CreateDIBSection(dc, reinterpret_cast<BITMAPINFO*>(&bi), DIB_RGB_COLORS, &bits, nullptr, 0);
+    ReleaseDC(nullptr, dc);
+    if (!color) return nullptr;
+    std::memcpy(bits, px.data(), px.size() * 4);
+    std::vector<uint8_t> zero(size_t((size + 15) / 16 * 2) * size, 0);
+    HBITMAP mask = CreateBitmap(size, size, 1, 1, zero.data());
+    ICONINFO ii{};
+    ii.fIcon = FALSE;
+    ii.xHotspot = DWORD(size / 2);
+    ii.yHotspot = DWORD(size / 2);
+    ii.hbmMask = mask;
+    ii.hbmColor = color;
+    HCURSOR cur = reinterpret_cast<HCURSOR>(CreateIconIndirect(&ii));
+    DeleteObject(color);
+    DeleteObject(mask);
+    return cur;
 }
 
 }  // namespace
@@ -325,6 +381,10 @@ void GlassWindow::Destroy() {
     if (hwnd_) {
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
+    }
+    for (HCURSOR& c : drawCursors_) {
+        if (c) DestroyCursor(c);
+        c = nullptr;
     }
     std::lock_guard<std::recursive_mutex> g(gpuLock_);
     dvisual_.Reset();
@@ -719,6 +779,158 @@ void GlassWindow::RenderLabelLocked(const std::wstring& name, float dp) {
     labelH_ = int(H);
 }
 
+// A stroke's outline in picture units. Pen and highlighter: quadratic curves through the midpoints between
+// mouse samples, which smooths the path. Arrow: an open shaft plus a closed head (filled when drawn).
+ComPtr<ID2D1PathGeometry> GlassWindow::StrokeGeometry(const Stroke& st) {
+    ComPtr<ID2D1PathGeometry> g;
+    ComPtr<ID2D1GeometrySink> sink;
+    const auto& p = st.pts;
+    if (p.empty() || FAILED(d2d_->CreatePathGeometry(g.GetAddressOf())) || FAILED(g->Open(sink.GetAddressOf())))
+        return nullptr;
+    if (st.tool == kArrow) {
+        D2D1_POINT_2F a = p.front(), b = p.back();
+        float len = std::hypot(b.x - a.x, b.y - a.y);
+        if (len < 1e-5f) {
+            sink->Close();
+            return nullptr;
+        }
+        float ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+        float head = std::min(st.width * 4.5f, len * 0.6f), half = head * 0.55f;
+        D2D1_POINT_2F base{b.x - ux * head, b.y - uy * head};
+        sink->BeginFigure(a, D2D1_FIGURE_BEGIN_HOLLOW);
+        sink->AddLine(base);
+        sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        sink->BeginFigure(b, D2D1_FIGURE_BEGIN_FILLED);
+        sink->AddLine(D2D1_POINT_2F{base.x - uy * half, base.y + ux * half});
+        sink->AddLine(D2D1_POINT_2F{base.x + uy * half, base.y - ux * half});
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    } else {
+        sink->BeginFigure(p[0], D2D1_FIGURE_BEGIN_HOLLOW);
+        for (size_t i = 1; i + 1 < p.size(); ++i) {
+            D2D1_POINT_2F mid{(p[i].x + p[i + 1].x) * 0.5f, (p[i].y + p[i + 1].y) * 0.5f};
+            sink->AddQuadraticBezier(D2D1_QUADRATIC_BEZIER_SEGMENT{p[i], mid});
+        }
+        sink->AddLine(p.back());
+        sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    }
+    if (FAILED(sink->Close())) return nullptr;
+    return g;
+}
+
+// The drawing layer for this frame (render thread, gpuLock_ held): the strokes mapped from picture units to the
+// window through the current layout and region zoom, clipped to the picture, plus the draw-mode hint.
+bool GlassWindow::RenderInkLocked(const Layout& L, const float zoom[4], const Shared& s, bool hint) {
+    std::lock_guard<std::mutex> lk(drawMu_);
+    if ((strokes_.empty() && !hint) || !d2d_ || L.video.W() < 1.0f || L.video.H() < 1.0f) return false;
+    if (!inkRt_ || inkW_ < s.winW || inkH_ < s.winH) {
+        inkRt_.Reset();
+        inkBrush_.Reset();
+        inkSrv_.Reset();
+        ink_.Reset();
+        int w = (std::max(s.winW, inkW_) + 255) & ~255, h = (std::max(s.winH, inkH_) + 255) & ~255;
+        inkW_ = inkH_ = 0;
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = UINT(w);
+        td.Height = UINT(h);
+        td.MipLevels = 1;
+        td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        ComPtr<IDXGISurface> surf;
+        D2D1_RENDER_TARGET_PROPERTIES props{};
+        props.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
+        props.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        props.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+        props.dpiX = props.dpiY = 96.0f;
+        if (FAILED(dev_->CreateTexture2D(&td, nullptr, ink_.GetAddressOf())) ||
+            FAILED(dev_->CreateShaderResourceView(ink_.Get(), nullptr, inkSrv_.GetAddressOf())) ||
+            FAILED(ink_.As(surf)) ||
+            FAILED(d2d_->CreateDxgiSurfaceRenderTarget(surf.Get(), &props, inkRt_.GetAddressOf())) ||
+            FAILED(inkRt_->CreateSolidColorBrush(kInkColors[0], inkBrush_.GetAddressOf()))) {
+            LOGE("draw: cannot create the %dx%d drawing layer", w, h);
+            inkRt_.Reset();
+            return false;
+        }
+        inkW_ = w;
+        inkH_ = h;
+        LOGI("draw: %dx%d drawing layer", w, h);
+    }
+    if (!inkStyle_) {
+        D2D1_STROKE_STYLE_PROPERTIES sp{D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
+                                        D2D1_LINE_JOIN_ROUND, 10.0f, D2D1_DASH_STYLE_SOLID, 0.0f};
+        d2d_->CreateStrokeStyle(&sp, nullptr, 0, inkStyle_.GetAddressOf());
+    }
+    // Picture units -> window px: k px per unit (the picture is 1 unit high, aspect units wide).
+    float aspect = L.video.W() / L.video.H();
+    float k = L.video.H() / std::max(zoom[3] - zoom[1], 1e-4f);
+    D2D1_MATRIX_3X2_F toWindow{k, 0, 0, k, L.video.x0 - zoom[0] * aspect * k, L.video.y0 - zoom[1] * k};
+    D2D1_MATRIX_3X2_F identity{1, 0, 0, 1, 0, 0};
+    inkRt_->BeginDraw();
+    inkRt_->SetTransform(identity);
+    inkRt_->Clear(D2D1_COLOR_F{0, 0, 0, 0});
+    inkRt_->PushAxisAlignedClip(D2D1_RECT_F{L.video.x0, L.video.y0, L.video.x1, L.video.y1}, D2D1_ANTIALIAS_MODE_ALIASED);
+    inkRt_->SetTransform(toWindow);
+    for (Stroke& st : strokes_) {
+        inkBrush_->SetColor(kInkColors[std::clamp(st.color, 0, 3)]);
+        inkBrush_->SetOpacity(st.tool == kHighlighter ? 0.4f : 1.0f);
+        if (st.tool != kArrow && st.pts.size() == 1) {  // a click: a dot
+            float r = st.width * 0.5f;
+            inkRt_->FillEllipse(D2D1_ELLIPSE{st.pts[0], r, r}, inkBrush_.Get());
+            continue;
+        }
+        ComPtr<ID2D1PathGeometry> g = st.geo;
+        if (!g) {
+            g = StrokeGeometry(st);
+            if (!st.open) st.geo = g;  // finished strokes are built once
+        }
+        if (!g) continue;
+        if (st.tool == kArrow) inkRt_->FillGeometry(g.Get(), inkBrush_.Get());
+        inkRt_->DrawGeometry(g.Get(), inkBrush_.Get(), st.width, inkStyle_.Get());
+    }
+    inkRt_->SetTransform(identity);
+    inkRt_->PopAxisAlignedClip();
+    if (hint && dwrite_) {
+        if (!hintFormat_ || hintDp_ != s.dp) {
+            hintFormat_.Reset();
+            dwrite_->CreateTextFormat(L"Segoe UI Variable Text", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                                      DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 13.0f * s.dp, L"",
+                                      hintFormat_.GetAddressOf());
+            hintDp_ = s.dp;
+        }
+        std::wstring text = std::wstring(kToolNames[std::clamp(s.drawTool, 0, 2)]) + L"  ·  Drawing (D to exit)";
+        ComPtr<IDWriteTextLayout> tl;
+        if (hintFormat_)
+            dwrite_->CreateTextLayout(text.c_str(), UINT32(text.size()), hintFormat_.Get(), 2000.0f, 200.0f,
+                                      tl.GetAddressOf());
+        DWRITE_TEXT_METRICS m{};
+        if (tl && SUCCEEDED(tl->GetMetrics(&m))) {
+            float dp = s.dp, pad = 11.0f * dp, dot = 8.0f * dp, gap = 7.0f * dp;
+            float bw = pad + dot + gap + m.width + pad, bh = m.height + 10.0f * dp;
+            if (bw < L.video.W() - 16.0f * dp && bh * 3.0f < L.video.H()) {
+                float x0 = L.video.CX() - bw * 0.5f, y0 = L.video.y1 - bh - 16.0f * dp;
+                inkBrush_->SetOpacity(1.0f);
+                inkBrush_->SetColor(D2D1_COLOR_F{0, 0, 0, 0.58f});
+                inkRt_->FillRoundedRectangle(D2D1_ROUNDED_RECT{{x0, y0, x0 + bw, y0 + bh}, bh * 0.5f, bh * 0.5f},
+                                             inkBrush_.Get());
+                inkBrush_->SetColor(kInkColors[std::clamp(s.drawColor, 0, 3)]);
+                inkRt_->FillEllipse(D2D1_ELLIPSE{{x0 + pad + dot * 0.5f, y0 + bh * 0.5f}, dot * 0.5f, dot * 0.5f},
+                                    inkBrush_.Get());
+                inkBrush_->SetColor(D2D1_COLOR_F{1, 1, 1, 0.95f});
+                inkRt_->DrawTextLayout(D2D1_POINT_2F{x0 + pad + dot + gap, y0 + 5.0f * dp}, tl.Get(), inkBrush_.Get());
+            }
+        }
+    }
+    HRESULT hr = inkRt_->EndDraw();
+    if (FAILED(hr)) {
+        LOGW("draw: drawing layer lost (0x%08lx), recreating it", hr);
+        inkRt_.Reset();  // recreated on the next frame
+        return false;
+    }
+    return true;
+}
+
 void GlassWindow::RenderLocked() {
     Shared s;
     {
@@ -782,11 +994,14 @@ void GlassWindow::RenderLocked() {
     StepSpring(anim_.dropA.x, anim_.dropA.v, hovering ? 1.0f : 0.0f, 420.0f, 0.9f, dt);
     StepSpring(anim_.press.x, anim_.press.v, s.pressing ? 1.0f : 0.0f, 900.0f, 0.75f, dt);
 
+    float zs = std::clamp(anim_.zoomS.x, kMinZoom * 0.5f, 1.0f) * 0.5f;
+    const float zoomUv[4] = {anim_.zoomX.x - zs, anim_.zoomY.x - zs, anim_.zoomX.x + zs, anim_.zoomY.x + zs};
     {
         std::lock_guard<std::mutex> lk(stateMu_);
         pubSlab_ = slab;
         pubLayout_ = L;
         pubControls_ = anim_.controls.x;
+        std::memcpy(pubZoom_, zoomUv, sizeof(zoomUv));
     }
 
     ComposeCB cb{};
@@ -815,8 +1030,7 @@ void GlassWindow::RenderLocked() {
     Set4(cb.tv0, L.btnX[3], hv[3], s.tv ? 1.0f : 0.0f, 0);
     Set4(cb.tv1, float(s.tvCorner), float(s.tvSize), 0, 0);
     Set4(cb.mode, s.obs ? 1.0f : 0.0f, 0, 0, 0);
-    float zs = std::clamp(anim_.zoomS.x, kMinZoom * 0.5f, 1.0f) * 0.5f;
-    Set4(cb.zoom, anim_.zoomX.x - zs, anim_.zoomY.x - zs, anim_.zoomX.x + zs, anim_.zoomY.x + zs);
+    Set4(cb.zoom, zoomUv[0], zoomUv[1], zoomUv[2], zoomUv[3]);
     if (s.selOn) Set4(cb.sel, s.sel.x0, s.sel.y0, s.sel.x1, s.sel.y1);
     float gs = std::min(L.video.W(), L.video.H()) * 0.12f;
     float gcx = L.video.CX(), gcy = L.video.CY() - L.video.H() * 0.05f;
@@ -831,6 +1045,10 @@ void GlassWindow::RenderLocked() {
         float ly = gcy + gs * 1.45f;
         Set4(cb.label, gcx - lw * ls * 0.5f, ly, gcx + lw * ls * 0.5f, ly + lh * ls);
         Set4(cb.labelInfo, labelSrv_ ? 1.0f : 0.0f, gcx, gcy, gs);
+        // Screenshots are taken from this frame: they show the strokes but not the draw-mode hint.
+        bool shot = shotReq_.exchange(false);
+        bool ink = RenderInkLocked(L, zoomUv, s, s.drawHint && !s.obs && !shot);
+        Set4(cb.ink, ink ? 1.0f / float(inkW_) : 0.0f, ink ? 1.0f / float(inkH_) : 0.0f, ink ? 1.0f : 0.0f, 0);
 
         D3D11_MAPPED_SUBRESOURCE m;
         if (SUCCEEDED(ctx_->Map(cbCompose_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
@@ -850,18 +1068,18 @@ void GlassWindow::RenderLocked() {
         ctx_->PSSetShader(psCompose_.Get(), nullptr, 0);
         ID3D11Buffer* cbs[] = {cbCompose_.Get()};
         ctx_->PSSetConstantBuffers(0, 1, cbs);
-        ID3D11ShaderResourceView* srvs[] = {rgbSrv_.Get(), labelSrv_.Get()};
-        ctx_->PSSetShaderResources(0, 2, srvs);
+        ID3D11ShaderResourceView* srvs[] = {rgbSrv_.Get(), labelSrv_.Get(), ink ? inkSrv_.Get() : nullptr};
+        ctx_->PSSetShaderResources(0, 3, srvs);
         ID3D11SamplerState* ss[] = {sampLinear_.Get()};
         ctx_->PSSetSamplers(0, 1, ss);
         ctx_->Draw(3, 0);
-        ID3D11ShaderResourceView* none[2] = {};
-        ctx_->PSSetShaderResources(0, 2, none);
+        ID3D11ShaderResourceView* none[3] = {};
+        ctx_->PSSetShaderResources(0, 3, none);
         if (!snapDir_.empty() && snapNext_ < snapTimes_.size() && now - sessionStart_ >= snapTimes_[snapNext_]) {
             SaveSnapshotLocked(int(snapNext_));
             ++snapNext_;
         }
-        if (shotReq_.exchange(false)) SaveScreenshotLocked(L);
+        if (shot) SaveScreenshotLocked(L);
         HRESULT hr = swap_->Present(1, 0);
         if (FAILED(hr) && !deviceLost_) {
             deviceLost_ = true;
@@ -1281,7 +1499,11 @@ void GlassWindow::SetPinned(bool pinned) {
 void GlassWindow::SetPro(bool pro) {
     pro_ = pro;
     ApplyObsMode();  // the free edition never shows Pro-only looks, even if they were chosen during the trial
-    if (!pro) ResetZoom();
+    if (!pro) {
+        ResetZoom();
+        SetDrawMode(false);
+        ClearDrawing();
+    }
 }
 
 void GlassWindow::ToggleObsMode() {
@@ -1390,6 +1612,162 @@ void GlassWindow::ZoomToSelection(const RectF& sel) {
     LOGI("zoom: %.1fx at %.2f,%.2f", 1.0f / zoomS_, zoomCx_, zoomCy_);
 }
 
+void GlassWindow::ToggleDrawMode() {
+    if (!sessionLive_ || !visible_) return;
+    if (!pro_) {
+        if (onUpgradeRequested) onUpgradeRequested(kProDraw);
+        return;
+    }
+    SetDrawMode(!drawMode_);
+}
+
+void GlassWindow::SetDrawMode(bool on) {
+    if (on == drawMode_) return;
+    if (!on && drawing_) {
+        drawing_ = false;  // first, so WM_CAPTURECHANGED doesn't finish the stroke twice
+        if (GetCapture() == hwnd_) ReleaseCapture();
+        EndStroke();
+    }
+    drawMode_ = on;
+    if (on && zoomArmed_) zoomArmed_ = false;
+    LOGI("draw: %s", on ? "on (P pen, A arrow, H highlighter, 1-4 colour, Backspace undo, C clear)" : "off");
+    PublishDrawHint();
+    UpdateControls();
+    POINT pt;
+    GetCursorPos(&pt);
+    if (WindowFromPoint(pt) == hwnd_) SendMessageW(hwnd_, WM_SETCURSOR, WPARAM(hwnd_), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+}
+
+void GlassWindow::SetDrawTool(int tool) {
+    drawTool_ = tool;
+    LOGI("draw: %s", WideToUtf8(kToolNames[tool]).c_str());
+    PublishDrawHint();
+}
+
+void GlassWindow::SetDrawColor(int color) {
+    drawColor_ = color;
+    PublishDrawHint();
+    POINT pt;
+    GetCursorPos(&pt);
+    if (WindowFromPoint(pt) == hwnd_) SendMessageW(hwnd_, WM_SETCURSOR, WPARAM(hwnd_), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+}
+
+void GlassWindow::PublishDrawHint() {
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        shared_.drawHint = drawMode_;
+        shared_.drawTool = drawTool_;
+        shared_.drawColor = drawColor_;
+    }
+    Wake();
+}
+
+HCURSOR GlassWindow::DrawCursor() {
+    HCURSOR& c = drawCursors_[std::clamp(drawColor_, 0, 3)];
+    if (!c) c = MakeDotCursor(kInkColors[std::clamp(drawColor_, 0, 3)], GetSystemMetricsForDpi(SM_CXCURSOR, GetDpiForWindow(hwnd_)));
+    return c ? c : LoadCursorW(nullptr, IDC_CROSS);
+}
+
+// A client point in picture units, through the frame on screen (layout and region zoom). False outside the picture.
+bool GlassWindow::PictureFromClient(float x, float y, D2D1_POINT_2F* pt, float* pxPerUnit) {
+    RectF v;
+    float z[4];
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        v = pubLayout_.video;
+        std::memcpy(z, pubZoom_, sizeof(z));
+    }
+    if (v.W() < 1.0f || v.H() < 1.0f) return false;
+    float k = v.H() / std::max(z[3] - z[1], 1e-4f), aspect = v.W() / v.H();
+    pt->x = z[0] * aspect + (x - v.x0) / k;
+    pt->y = z[1] + (y - v.y0) / k;
+    *pxPerUnit = k;
+    return v.Contains(x, y);
+}
+
+void GlassWindow::BeginStroke(float x, float y) {
+    Stroke st;
+    D2D1_POINT_2F p;
+    float k = 1;
+    if (!PictureFromClient(x, y, &p, &k)) return;  // starts on the picture only
+    st.tool = drawTool_;
+    st.color = drawColor_;
+    // On-screen width now; kept in picture units, so a stroke drawn zoomed in is fine detail when zoomed out.
+    float px = drawTool_ == kHighlighter ? 22.0f : drawTool_ == kArrow ? 5.0f : 4.0f;
+    st.width = px * dp_ / k;
+    st.pts.push_back(p);
+    if (st.tool == kArrow) st.pts.push_back(p);
+    {
+        std::lock_guard<std::mutex> lk(drawMu_);
+        strokes_.push_back(std::move(st));
+    }
+    drawing_ = true;
+    lastInk_ = POINT{LONG(x), LONG(y)};
+    SetCapture(hwnd_);
+    Wake();
+}
+
+void GlassWindow::ExtendStroke(float x, float y) {
+    if (std::abs(LONG(x) - lastInk_.x) + std::abs(LONG(y) - lastInk_.y) < 2) return;
+    lastInk_ = POINT{LONG(x), LONG(y)};
+    D2D1_POINT_2F p;
+    float k = 1;
+    PictureFromClient(x, y, &p, &k);  // outside the picture is fine: the layer is clipped to it
+    {
+        std::lock_guard<std::mutex> lk(drawMu_);
+        if (strokes_.empty() || !strokes_.back().open) return;
+        Stroke& st = strokes_.back();
+        if (st.tool == kArrow) st.pts.back() = p;
+        else if (st.pts.size() < 20000) st.pts.push_back(p);
+    }
+    Wake();
+}
+
+void GlassWindow::EndStroke() {
+    {
+        std::lock_guard<std::mutex> lk(drawMu_);
+        if (strokes_.empty() || !strokes_.back().open) return;
+        Stroke& st = strokes_.back();
+        st.open = false;
+        // An arrow needs a drag; a click leaves nothing.
+        if (st.tool == kArrow &&
+            std::hypot(st.pts[1].x - st.pts[0].x, st.pts[1].y - st.pts[0].y) < st.width * 3.0f)
+            strokes_.pop_back();
+        LOGD("draw: %zu strokes", strokes_.size());
+    }
+    Wake();
+}
+
+void GlassWindow::UndoStroke() {
+    if (drawing_) return;
+    {
+        std::lock_guard<std::mutex> lk(drawMu_);
+        if (strokes_.empty()) return;
+        strokes_.pop_back();
+        LOGI("draw: undo, %zu strokes left", strokes_.size());
+    }
+    Wake();
+}
+
+bool GlassWindow::HasDrawing() {
+    std::lock_guard<std::mutex> lk(drawMu_);
+    return !strokes_.empty();
+}
+
+void GlassWindow::ClearDrawing() {
+    if (drawing_) {
+        drawing_ = false;
+        if (GetCapture() == hwnd_) ReleaseCapture();
+    }
+    {
+        std::lock_guard<std::mutex> lk(drawMu_);
+        if (strokes_.empty()) return;
+        strokes_.clear();
+    }
+    LOGI("draw: cleared");
+    Wake();
+}
+
 void GlassWindow::RememberSize() {
     if (fullscreen_) return;
     RectF s = hasAnimTarget_ ? animTarget_ : CurrentSlabScreen();
@@ -1409,6 +1787,8 @@ void GlassWindow::BeginSession(uint64_t sid, const std::wstring& deviceName, con
     sid_ = sid;
     sessionLive_ = true;
     ResetZoom();
+    SetDrawMode(false);
+    ClearDrawing();  // strokes belong to the picture they were drawn on
     vidW_ = vidH_ = contentW_ = 0;
     {
         std::lock_guard<std::recursive_mutex> g(gpuLock_);
@@ -1523,6 +1903,7 @@ void GlassWindow::EndSession(uint64_t sid) {
     if (sid != sid_ || !sessionLive_) return;
     sessionLive_ = false;
     tvHighlight_ = -1;
+    SetDrawMode(false);
     if (!visible_ || tvHidden_) {
         tvHidden_ = false;
         tvHiding_ = false;
@@ -1557,7 +1938,10 @@ void GlassWindow::ApplyAspect(float a) {
         std::lock_guard<std::mutex> lk(stateMu_);
         shared_.aspect = a;
     }
-    if (changed) ResetZoom();  // a rotated picture is a different picture
+    if (changed) {  // a rotated picture is a different picture
+        ResetZoom();
+        ClearDrawing();
+    }
     if (changed && visible_ && !tvHiding_) {
         if (fullscreen_) {
             restoreSlab_ = SlabForAspect(restoreSlab_, a);
@@ -1844,7 +2228,7 @@ void GlassWindow::UpdateControls() {
     if (!visible_ || debugHover_ >= 0) return;
     bool mouseWants = mouseInside_ &&
                       (NowSeconds() - lastMouseMove_ < kControlsIdleSeconds || overPill_ || pressedBtn_ >= 0);
-    bool want = !dismissing_ && !tvHiding_ && !ObsMode() && (mouseWants || tvHighlight_ >= 0);
+    bool want = !dismissing_ && !tvHiding_ && !ObsMode() && !drawMode_ && (mouseWants || tvHighlight_ >= 0);
     if (want != controlsShown_) {
         controlsShown_ = want;
         {
@@ -1853,7 +2237,7 @@ void GlassWindow::UpdateControls() {
         }
         Wake();
     }
-    bool hide = fullscreen_ && mouseInside_ && !want && !zoomArmed_ && !zoomSelecting_;
+    bool hide = fullscreen_ && mouseInside_ && !want && !zoomArmed_ && !zoomSelecting_ && !drawMode_;
     if (hide != cursorHidden_) {
         cursorHidden_ = hide;
         POINT pt;
@@ -1888,6 +2272,8 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     AppendMenuW(m, MF_STRING | (ObsMode() ? MF_CHECKED : 0), 4, pro_ ? L"OBS mode\tO" : L"OBS mode (Pro)…");
     AppendMenuW(m, MF_STRING, 5,
                 !pro_ ? L"Zoom into a region (Pro)…" : Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
+    AppendMenuW(m, MF_STRING | (drawMode_ ? MF_CHECKED : 0), 6, pro_ ? L"Draw on screen\tD" : L"Draw on screen (Pro)…");
+    if (HasDrawing()) AppendMenuW(m, MF_STRING, 7, L"Clear drawing\tC");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, 3, L"Disconnect");
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd_, nullptr);
@@ -1897,6 +2283,8 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     if (cmd == 3) ActivateButton(0);
     if (cmd == 4) ToggleObsMode();
     if (cmd == 5) ToggleRegionZoom();
+    if (cmd == 6) ToggleDrawMode();
+    if (cmd == 7) ClearDrawing();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2052,6 +2440,10 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             mouseInside_ = true;
         }
         lastMouseMove_ = NowSeconds();
+        if (drawing_) {
+            ExtendStroke(x, y);
+            return 0;
+        }
         if (zoomSelecting_) {
             RectF r = SelectionRect(zoomFrom_, POINT{LONG(x), LONG(y)});
             SetSelection(&r);
@@ -2094,6 +2486,10 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             SetCapture(hwnd_);
             return 0;
         }
+        if (drawMode_ && sessionLive_) {  // draw mode: drags draw instead of moving the window
+            BeginStroke(x, y);
+            return 0;
+        }
         SetCapture(hwnd_);
         bool over = false;
         int b = ButtonAt(x, y, &over);
@@ -2110,6 +2506,12 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
     }
     case WM_LBUTTONUP: {
         float x = float(GET_X_LPARAM(l)), y = float(GET_Y_LPARAM(l));
+        if (drawing_) {
+            drawing_ = false;  // first, so WM_CAPTURECHANGED doesn't finish the stroke twice
+            ReleaseCapture();
+            EndStroke();
+            return 0;
+        }
         if (zoomSelecting_) {
             RectF r = SelectionRect(zoomFrom_, POINT{LONG(x), LONG(y)});
             zoomSelecting_ = false;  // first, so WM_CAPTURECHANGED doesn't treat this as a cancel
@@ -2134,12 +2536,20 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_CAPTURECHANGED:
+        if (drawing_) {  // capture taken away mid-stroke: keep what was drawn
+            drawing_ = false;
+            EndStroke();
+        }
         if (zoomSelecting_) {  // capture taken away mid-drag (Alt+Tab, a dialog): drop the selection
             zoomSelecting_ = false;
             SetSelection(nullptr);
         }
         break;
     case WM_LBUTTONDBLCLK: {
+        if (drawMode_ && sessionLive_ && !zoomArmed_) {  // a quick second click is another stroke
+            BeginStroke(float(GET_X_LPARAM(l)), float(GET_Y_LPARAM(l)));
+            return 0;
+        }
         if (Zoomed()) {
             ResetZoom();
             return 0;
@@ -2190,6 +2600,7 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
     case WM_SETCURSOR:
         if (LOWORD(l) == HTCLIENT) {
             SetCursor(zoomArmed_ || zoomSelecting_ ? LoadCursorW(nullptr, IDC_CROSS)
+                      : drawMode_                  ? DrawCursor()
                       : cursorHidden_              ? nullptr
                                                    : LoadCursorW(nullptr, IDC_ARROW));
             return TRUE;
@@ -2199,7 +2610,35 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
         switch (w) {
         case VK_ESCAPE:
             if (Zoomed() || zoomArmed_ || zoomSelecting_) ResetZoom();  // zoom out first, then leave full screen
+            else if (drawMode_) SetDrawMode(false);
             else if (fullscreen_) ExitFullscreen();
+            return 0;
+        case 'D':  // Pro: draw on the picture
+            ToggleDrawMode();
+            return 0;
+        case 'C':
+            if (pro_) ClearDrawing();
+            return 0;
+        case VK_BACK:
+            if (pro_) UndoStroke();
+            return 0;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+            if (drawMode_) SetDrawColor(int(w - '1'));
+            return 0;
+        case VK_NUMPAD1:
+        case VK_NUMPAD2:
+        case VK_NUMPAD3:
+        case VK_NUMPAD4:
+            if (drawMode_) SetDrawColor(int(w - VK_NUMPAD1));
+            return 0;
+        case 'A':
+            if (drawMode_) SetDrawTool(kArrow);
+            return 0;
+        case 'H':
+            if (drawMode_) SetDrawTool(kHighlighter);
             return 0;
         case 'Z':  // Pro: region zoom
             ToggleRegionZoom();
@@ -2210,6 +2649,9 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             else EnterFullscreen();
             return 0;
         case 'P':
+            if (drawMode_) SetDrawTool(kPen);  // in draw mode P is the pen; T still keeps the window on top
+            else SetPinned(!pinned_);
+            return 0;
         case 'T': SetPinned(!pinned_); return 0;
         case 'S':  // Pro: screenshot (the caller picks the file name)
             if (!sessionLive_) return 0;

@@ -45,3 +45,24 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 | 10 | Zoom in and rotate the phone; or end the session and mirror again. | The zoom resets to the whole picture. |
 | 11 | Tray menu during mirroring; right-click in the window. | "Zoom into a region  Z" (or "Zoom out  Z" when zoomed) in both. |
 | 12 | Free edition: press <kbd>Z</kbd>, or <kbd>Ctrl</kbd>+click the full-screen picture. | The AirGlass Pro dialog: "Region zoom is part of AirGlass Pro…". |
+
+## Draw on screen (Pro, <kbd>D</kbd>)
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Mirror in the glass window, press <kbd>D</kbd>. | The cursor over the window becomes a red dot. A small dark pill at the bottom of the picture says "Pen · Drawing (D to exit)". Hovering shows no capsule. |
+| 2 | Drag across the picture. | A smooth red line follows the mouse. The window does not move. |
+| 3 | Press <kbd>2</kbd>, <kbd>3</kbd>, <kbd>4</kbd>, <kbd>1</kbd> and draw after each. | The cursor dot and the pill's dot change colour: yellow, green, blue, red; each new stroke uses that colour, old strokes keep theirs. |
+| 4 | Press <kbd>A</kbd> and drag. Press <kbd>H</kbd> and drag over some text. Press <kbd>P</kbd> and drag. | An arrow with a filled head pointing where the drag ended; a wide see-through highlighter stroke (overlapping parts don't get darker); then the pen again. The pill names the tool. A plain click with the arrow leaves nothing; a click with the pen leaves a dot. |
+| 5 | Quick double-click with the pen. | Two dots; the window doesn't go full screen. |
+| 6 | Press <kbd>Backspace</kbd> twice, then <kbd>C</kbd>. | The last two strokes disappear one by one, then all of them. |
+| 7 | Draw a few strokes, then move the window (press <kbd>D</kbd> to stop drawing, drag), resize it from a corner and use the mouse wheel. | The strokes stay on the same spots of the picture and scale with it. |
+| 8 | Zoom into a region (<kbd>Z</kbd> then drag) over a stroke; draw while zoomed; zoom out. | The strokes zoom with the picture. A stroke drawn while zoomed in is thinner after zooming out. |
+| 9 | Full screen (<kbd>F</kbd>) with strokes. | The strokes are on the same spots of the full-screen picture. The cursor stays visible as the dot while drawing. |
+| 10 | Press <kbd>S</kbd> with strokes on and draw mode on. | The PNG and the clipboard picture contain the strokes but not the "Drawing (D to exit)" pill. |
+| 11 | OBS mode (<kbd>O</kbd>) with strokes, draw mode on. | OBS captures the strokes; the pill is not shown in OBS mode. |
+| 12 | Record (<kbd>R</kbd>) while drawing, stop, play the MP4. | The recording has no strokes (it is the sender's own stream). |
+| 13 | Press <kbd>D</kbd> or <kbd>Esc</kbd>. | Drawing stops: arrow cursor, pill gone, the strokes stay; dragging moves the window again. <kbd>C</kbd> still clears. With a zoom, the first <kbd>Esc</kbd> zooms out, the next stops drawing. |
+| 14 | With strokes on, rotate the phone; or end the session and mirror again. | The strokes are gone and draw mode is off. |
+| 15 | Tray menu during mirroring; right-click in the window. | "Draw on screen  D" in both, ticked while drawing; the window menu also has "Clear drawing  C" when there are strokes. |
+| 16 | Free edition: press <kbd>D</kbd>, or tray → "Draw on screen (Pro)…". | The AirGlass Pro dialog: "Drawing on screen is part of AirGlass Pro…". |

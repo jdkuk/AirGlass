@@ -18,6 +18,11 @@ All notable changes to AirGlass are documented here. The format is based on
 - Pro: region zoom. Press <kbd>Z</kbd> and drag a rectangle (or <kbd>Ctrl</kbd>+drag) to zoom smoothly into that
   part of the mirrored picture, up to 8x; drag again to zoom further. <kbd>Z</kbd>, <kbd>Esc</kbd> or a double-click
   zooms back out. Screenshots and OBS mode show the zoomed view; recordings keep the whole picture.
+- Pro: draw on screen. Press <kbd>D</kbd> (or use the tray or window menu) and drag to draw on the mirrored picture
+  with a pen, an arrow (<kbd>A</kbd>) or a highlighter (<kbd>H</kbd>; <kbd>P</kbd> is the pen) in red, yellow, green
+  or blue (<kbd>1</kbd>–<kbd>4</kbd>). <kbd>Backspace</kbd> undoes the last stroke and <kbd>C</kbd> clears them all.
+  Strokes stay on the picture when the window moves, resizes or zooms, and clear on a new session or a rotation.
+  Screenshots and OBS mode show them; recordings copy the sender's stream, so they don't.
 
 ## [1.0.5] - 2026-11-15
 

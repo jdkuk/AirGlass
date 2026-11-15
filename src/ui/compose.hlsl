@@ -24,10 +24,12 @@ cbuffer ComposeCB : register(b0)
     float4 gMode;       // OBS mode 0/1, -, -, -
     float4 gZoom;       // region zoom: part of the picture shown, u0 v0 u1 v1 (0 0 1 1 = all of it)
     float4 gSel;        // region-zoom rectangle being dragged, x0 y0 x1 y1 (window px); none when x1 <= x0
+    float4 gInk;        // drawing layer: 1/w, 1/h of tInk, on 0/1, -
 };
 
 Texture2D<float4> tVideo : register(t0);
 Texture2D<float4> tLabel : register(t1);
+Texture2D<float4> tInk : register(t2);  // strokes drawn on the picture (premultiplied, window px)
 SamplerState sLin : register(s0);
 
 struct VSOut
@@ -284,6 +286,15 @@ float3 GlassBezel(float2 p, float d)
     return saturate(c);
 }
 
+// Drawing on the picture: laid over the video only, so the picture's rounded corners clip it.
+float3 ApplyInk(float2 p, float3 c)
+{
+    if (gInk.z < 0.5)
+        return c;
+    float4 ink = tInk.SampleLevel(sLin, p * gInk.xy, 0.0);
+    return c * (1.0 - ink.a) + ink.rgb;
+}
+
 float3 SlabColor(float2 p, float d)
 {
     float fs = gGeom.w;
@@ -297,7 +308,7 @@ float3 SlabColor(float2 p, float d)
         glass = Obs() ? kKeyGreen : lerp(GlassBezel(p, d), float3(0.0, 0.0, 0.0), fs);
     float3 content = float3(0.0, 0.0, 0.0);
     if (vCov > 0.0)
-        content = Content(p, -1.0);
+        content = ApplyInk(p, Content(p, -1.0));
     float3 c = lerp(glass, content, vCov);
     float edge = saturate(1.0 - abs(dV) / (1.5 * gGeom.z)) * (1.0 - fs) * step(0.0, dV) * (1.0 - gMode.x);
     return c * (1.0 - 0.18 * edge);
