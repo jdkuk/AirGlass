@@ -49,6 +49,7 @@ Name: "firewall"; Description: "Allow AirGlass through Windows Firewall (asks fo
 Source: "build\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "build\avcodec-*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "build\avutil-*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "build\avformat-*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "build\swresample-*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion

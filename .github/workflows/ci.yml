@@ -145,6 +145,7 @@ jobs:
             build/AirGlass.exe
             build/avcodec-*.dll
             build/avutil-*.dll
+            build/avformat-*.dll
             build/swresample-*.dll
 
   installer:
@@ -185,6 +186,19 @@ jobs:
           & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" /Q "/DAppVersion=0.0.0-ci" "/DFfmpegDir=$ff" installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Get-ChildItem dist
+
+      - name: Installed app has every DLL it imports
+        run: |
+          # Install silently to a temp folder, then check each non-Windows DLL that AirGlass.exe imports is there.
+          $setup = (Get-ChildItem dist -Filter '*.exe' | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'installed'
+          Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dir",'/CURRENTUSER' -Wait
+          $objdump = (Get-ChildItem .toolchain -Recurse -Filter 'llvm-objdump.exe' | Select-Object -First 1).FullName
+          $imports = & $objdump -p "$dir/AirGlass.exe" | Select-String 'DLL Name: (.+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
+          $missing = $imports | Where-Object { $_ -match '^(av|sw)' -and -not (Test-Path (Join-Path $dir $_)) }
+          "imports: $($imports -join ', ')"
+          if ($missing) { Write-Error "installer is missing: $($missing -join ', ')"; exit 1 }
+          "all FFmpeg DLLs present"
 
       - uses: actions/upload-artifact@v7
         with:
