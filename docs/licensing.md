@@ -12,7 +12,7 @@
 | Recording (<kbd>R</kbd>): MP4 to Videos\AirGlass, the sender's H.264 copied as-is, with the session's sound (AAC) | | ✅ |
 | OBS mode (<kbd>O</kbd>): opaque window, chroma-key green (#00B140) round the picture, title "AirGlass (OBS)" | | ✅ |
 | Region zoom (<kbd>Z</kbd> then drag, or <kbd>Ctrl</kbd>+drag): zoom into part of the mirrored picture | | ✅ |
-| Draw on screen (<kbd>D</kbd>): pen, arrow and highlighter on the picture; in screenshots and OBS mode, not in recordings | | ✅ |
+| Draw on screen (<kbd>D</kbd>): pen, arrow, highlighter and eraser, with an on-screen toolbar; in screenshots and OBS mode, not in recordings | | ✅ |
 | Allow-list (tray → *Ask before new devices connect*): Allow once / Always allow / Block for each new device | machine-wide setting only ([Deployment](deployment.md)) | ✅ |
 | Require a code to connect (tray): a new device types the 4-digit *AirPlay Code* shown on the PC; paired devices are remembered | machine-wide setting only ([Deployment](deployment.md)) | ✅ |
 | Devices mirroring at once, each in its own window | 1: a new device takes over | 2: a third device takes over the oldest session |

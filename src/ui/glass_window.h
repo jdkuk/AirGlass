@@ -111,14 +111,16 @@ public:
     void ToggleRegionZoom();
     bool Zoomed() const { return zoomS_ < 0.999f; }
     // Pro: draw on the picture. D (or the menus) toggles draw mode, where drags draw instead of moving the window.
-    // P pen, A arrow, H highlighter; 1-4 red, yellow, green, blue; Backspace undoes a stroke, C clears them all.
-    // Strokes are kept in picture coordinates, so they stay on the picture when the window moves, resizes or
-    // zooms; they stay after draw mode ends and clear on a new session or a rotation. Screenshots and OBS mode
-    // show them; recordings copy the sender's stream, so they don't.
+    // P pen, A arrow, H highlighter, E eraser (removes the strokes it touches); 1-4 red, yellow, green, blue;
+    // Backspace undoes the last change (a stroke, an erase or a clear), C clears them all. In draw mode a toolbar on
+    // the picture offers the same with the mouse, and a Done button. Strokes are kept in picture coordinates, so
+    // they stay on the picture when the window moves, resizes or zooms; they stay after draw mode ends and clear on
+    // a new session or a rotation. Screenshots and OBS mode show them (not the toolbar); recordings copy the
+    // sender's stream, so they don't.
     void ToggleDrawMode();
     bool DrawMode() const { return drawMode_; }
     bool HasDrawing();
-    void ClearDrawing();
+    void ClearDrawing(bool undoable = false);  // undoable: the user's clear (C, menus, toolbar), Backspace restores
 
     // FrameSink (decoder threads)
     ID3D11Device* GpuDevice() override { return dev_.Get(); }
@@ -165,8 +167,8 @@ private:
         float zoomCx = 0.5f, zoomCy = 0.5f, zoomS = 1.0f;  // region zoom: centre and size, in picture uv
         bool selOn = false;
         RectF sel;  // region-zoom rectangle being dragged (window px)
-        bool drawHint = false;  // draw mode: show "Drawing (D to exit)"
-        int drawTool = 0, drawColor = 0;
+        bool drawHint = false;  // draw mode: show the toolbar
+        int drawTool = 0, drawColor = 0, drawHover = -1;
     };
     struct Anim {
         Spring x0, y0, x1, y1, appear, fs, controls, dropX, dropA, press, reveal;
@@ -199,7 +201,7 @@ private:
     void SetSelection(const RectF* sel);  // nullptr hides it
     RectF SelectionRect(POINT a, POINT b);
     // Drawing (UI thread, except RenderInkLocked)
-    enum DrawTool { kPen = 0, kArrow = 1, kHighlighter = 2 };
+    enum DrawTool { kPen = 0, kArrow = 1, kHighlighter = 2, kEraser = 3 };
     struct Stroke {
         int tool = kPen, color = 0;
         float width = 0;                  // picture units (the picture is 1 high)
@@ -207,19 +209,31 @@ private:
         bool open = true;                 // still being drawn
         ComPtr<ID2D1PathGeometry> geo;    // built by the render thread once the stroke is finished
     };
+    // One step Backspace takes back: a stroke added, or strokes removed (an erase or a clear) with their places.
+    struct UndoStep {
+        bool add = false;
+        std::vector<std::pair<size_t, Stroke>> removed;  // in the order they were removed
+    };
     void SetDrawMode(bool on);
     void SetDrawTool(int tool);
     void SetDrawColor(int color);
     void PublishDrawHint();
+    void RefreshCursor();
     bool PictureFromClient(float x, float y, D2D1_POINT_2F* pt, float* pxPerUnit);
     void BeginStroke(float x, float y);
     void ExtendStroke(float x, float y);
     void EndStroke();
     void UndoStroke();
+    void EraseAlongLocked(D2D1_POINT_2F a, D2D1_POINT_2F b);  // requires drawMu_
+    // Draw-mode toolbar: the button under a client point (-1 for none; *over: on the toolbar at all), and a click.
+    int DrawBarAt(float x, float y, bool* over);
+    void PressDrawBar(int button);
+    void UpdateDrawBarHover(int button);
     HCURSOR DrawCursor();
     ComPtr<ID2D1PathGeometry> StrokeGeometry(const Stroke& s);
-    // Draws the strokes (and the draw-mode hint) into ink_ for this frame's layout; false if there is nothing.
-    bool RenderInkLocked(const Layout& L, const float zoom[4], const Shared& s, bool hint);
+    // Draws the strokes (and the draw-mode toolbar) into ink_ for this frame's layout; false if there is nothing.
+    bool RenderInkLocked(const Layout& L, const float zoom[4], const Shared& s, bool toolbar);
+    void RenderDrawBarLocked(const Layout& L, const Shared& s);  // requires drawMu_, inside BeginDraw
     void UpdateTvBoost();
 
     // Geometry (UI thread)
@@ -305,9 +319,7 @@ private:
     ComPtr<ID2D1RenderTarget> inkRt_;
     ComPtr<ID2D1SolidColorBrush> inkBrush_;
     ComPtr<ID2D1StrokeStyle> inkStyle_;
-    ComPtr<IDWriteTextFormat> hintFormat_;
     int inkW_ = 0, inkH_ = 0;
-    float hintDp_ = 0;  // hintFormat_ was made for this dp
 
     // Window / UI thread state
     HWND hwnd_ = nullptr;
@@ -337,12 +349,17 @@ private:
     bool zoomArmed_ = false, zoomSelecting_ = false;  // Z pressed / dragging the zoom rectangle
     POINT zoomFrom_{};
     float zoomCx_ = 0.5f, zoomCy_ = 0.5f, zoomS_ = 1.0f;  // target region (picture uv), 1 = the whole picture
-    bool drawMode_ = false, drawing_ = false;  // draw mode on / a stroke is being dragged
-    int drawTool_ = kPen, drawColor_ = 0;
+    bool drawMode_ = false, drawing_ = false;  // draw mode on / a stroke (or an erase) is being dragged
+    bool erasing_ = false;                     // the drag is the eraser's
+    int drawTool_ = kPen, drawColor_ = 0, barHover_ = -1;
     POINT lastInk_{};
-    HCURSOR drawCursors_[4] = {};
-    std::mutex drawMu_;            // guards strokes_ (UI thread edits, render thread draws)
+    D2D1_POINT_2F lastErase_{};
+    float eraseR_ = 0;  // eraser radius (picture units)
+    HCURSOR drawCursors_[4] = {}, eraserCursor_ = nullptr;
+    std::mutex drawMu_;            // guards strokes_ and undo_ (UI thread edits, render thread draws)
     std::vector<Stroke> strokes_;
+    std::vector<UndoStep> undo_;
+    UndoStep eraseStep_;           // the erase being dragged (UI thread)
     // TV Mode
     bool tv_ = false, sessionLive_ = false, tvHidden_ = false, tvHiding_ = false, tvFree_ = false;
     TvLayout tvDefaults_, tvLayout_;

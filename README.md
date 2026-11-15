@@ -99,7 +99,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | Record the mirrored screen and its sound to MP4, picture in original quality, no re-encode (<kbd>R</kbd>) | | ✅ |
 | OBS mode: a chroma-key green window for OBS Window Capture (<kbd>O</kbd>) | | ✅ |
 | Region zoom: drag a rectangle to zoom into part of the picture (<kbd>Z</kbd>) | | ✅ |
-| Draw on screen: pen, arrow and highlighter on the mirrored picture (<kbd>D</kbd>) | | ✅ |
+| Draw on screen: pen, arrow, highlighter and eraser on the mirrored picture, with a toolbar (<kbd>D</kbd>) | | ✅ |
 | Allow-list: ask on the PC before a new device connects (tray → *Ask before new devices connect*) | | ✅ |
 | Require a code: a new device must type the 4-digit code the PC shows (tray → *Require a code to connect*) | | ✅ |
 | Two devices at once, each in its own window (a new device takes over in the free edition; a third one takes over the oldest in Pro) | one at a time | ✅ two |
@@ -138,10 +138,12 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 | <kbd>Z</kbd> then drag, or <kbd>Ctrl</kbd>+drag | zoom into that region of the picture (<kbd>Z</kbd>, <kbd>Esc</kbd> or double-click zooms out) |
 | Double-click, <kbd>F</kbd> or <kbd>F11</kbd> | full screen (<kbd>Esc</kbd> leaves) |
 | Hover | glass controls: ✕ disconnect · 📌 keep on top · ⤢ full screen |
-| <kbd>P</kbd> | keep on top |
+| <kbd>P</kbd> (or <kbd>T</kbd>) | keep on top |
+| <kbd>S</kbd> | screenshot: a PNG to Pictures\AirGlass and the picture on the clipboard |
+| <kbd>R</kbd> | start / stop recording to Videos\AirGlass |
 | <kbd>Tab</kbd> | two devices at once: go to the other window (its sound plays) |
 | <kbd>O</kbd> | OBS mode: chroma-key green round the picture, no glass, window title "AirGlass (OBS)" |
-| <kbd>D</kbd> | draw on the picture: drag to draw · <kbd>P</kbd> pen · <kbd>A</kbd> arrow · <kbd>H</kbd> highlighter · <kbd>1</kbd>–<kbd>4</kbd> red, yellow, green, blue · <kbd>Backspace</kbd> undo · <kbd>C</kbd> clear · <kbd>D</kbd> or <kbd>Esc</kbd> stops drawing |
+| <kbd>D</kbd> | draw on the picture: drag to draw · <kbd>P</kbd> pen · <kbd>A</kbd> arrow · <kbd>H</kbd> highlighter · <kbd>E</kbd> eraser (drag over strokes) · <kbd>1</kbd>–<kbd>4</kbd> red, yellow, green, blue · <kbd>Backspace</kbd> undo · <kbd>C</kbd> clear · <kbd>D</kbd> or <kbd>Esc</kbd> stops drawing. The toolbar on the picture has the same, plus ✓ to stop drawing |
 | Right-click | menu |
 
 Rotating the device morphs the window between portrait and landscape. Audio plays through the default Windows output,

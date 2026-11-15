@@ -129,7 +129,54 @@ bool SameRect(const RECT& a, const RECT& b) {
 // Drawing colours (keys 1-4) and tools.
 constexpr D2D1_COLOR_F kInkColors[4] = {
     {1.00f, 0.23f, 0.19f, 1}, {1.00f, 0.80f, 0.00f, 1}, {0.20f, 0.78f, 0.35f, 1}, {0.04f, 0.52f, 1.00f, 1}};
-const wchar_t* const kToolNames[3] = {L"Pen", L"Arrow", L"Highlighter"};
+const wchar_t* const kToolNames[4] = {L"Pen", L"Arrow", L"Highlighter", L"Eraser"};
+constexpr float kEraserDp = 10.0f;  // eraser radius on screen
+
+// The draw-mode toolbar: four tools, the four colours, undo and clear, and Done, in groups. Laid out from the
+// picture's rectangle (window px) alone, so the render thread draws it and the UI thread hit-tests it alike:
+// along the bottom of the picture, or down its left side when the picture is too narrow (a portrait phone).
+enum DrawBarButton {
+    kBarPen = 0, kBarArrow, kBarHighlighter, kBarEraser, kBarRed, kBarYellow, kBarGreen, kBarBlue, kBarUndo, kBarClear,
+    kBarDone, kBarCount
+};
+const char* const kBarNames[kBarCount] = {"pen", "arrow", "highlighter", "eraser", "red", "yellow", "green", "blue",
+                                          "undo", "clear", "done"};
+struct DrawBar {
+    bool on = false;
+    RectF box;
+    float r = 0;  // button radius
+    D2D1_POINT_2F c[kBarCount] = {};
+};
+
+DrawBar ComputeDrawBar(const RectF& video, float dp) {
+    DrawBar b;
+    const float cell = 34.0f * dp, pad = 5.0f * dp, gap = 10.0f * dp, edge = 14.0f * dp;
+    float len = 2.0f * pad + float(kBarCount) * cell + 3.0f * gap, thick = cell + 2.0f * pad;
+    bool vertical = len > video.W() - 2.0f * edge && video.H() > video.W();
+    float room = (vertical ? video.H() : video.W()) - 2.0f * edge;
+    float k = std::min(1.0f, room / len);
+    if (k < 0.55f || thick * k * 3.0f > (vertical ? video.W() : video.H())) return b;  // too small a picture
+    len *= k;
+    thick *= k;
+    b.on = true;
+    b.r = cell * k * 0.5f;
+    b.box = vertical ? RectF{video.x0 + edge, video.CY() - len * 0.5f, video.x0 + edge + thick, video.CY() + len * 0.5f}
+                     : RectF{video.CX() - len * 0.5f, video.y1 - edge - thick, video.CX() + len * 0.5f, video.y1 - edge};
+    float along = pad * k + b.r;
+    for (int i = 0; i < kBarCount; ++i) {
+        if (i == kBarRed || i == kBarUndo || i == kBarDone) along += gap * k;
+        b.c[i] = vertical ? D2D1_POINT_2F{b.box.CX(), b.box.y0 + along} : D2D1_POINT_2F{b.box.x0 + along, b.box.CY()};
+        along += 2.0f * b.r;
+    }
+    return b;
+}
+
+// Distance from p to the segment a-b.
+float SegmentDistance(D2D1_POINT_2F p, D2D1_POINT_2F a, D2D1_POINT_2F b) {
+    float dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    float t = l2 > 0 ? std::clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / l2, 0.0f, 1.0f) : 0.0f;
+    return std::hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
 
 // Uniform scale s, then a move by (dx, dy).
 D2D1_MATRIX_3X2_F Matrix(float s, float dx, float dy) {
@@ -141,16 +188,18 @@ D2D1_MATRIX_3X2_F Matrix(float s, float dx, float dy) {
     return m;
 }
 
-// Draw-mode cursor: a dot in the current colour, ringed white and dark so it shows on any picture.
-HCURSOR MakeDotCursor(const D2D1_COLOR_F& c, int size) {
+// Draw-mode cursor: a dot in the current colour, ringed white and dark so it shows on any picture. ring: the
+// eraser's, an empty circle about as big as what it erases.
+HCURSOR MakeDotCursor(const D2D1_COLOR_F& c, int size, bool ring = false) {
     std::vector<uint32_t> px(size_t(size) * size);
-    float cx = size * 0.5f, r = std::max(3.0f, size * 0.11f);
+    float cx = size * 0.5f, r = ring ? size * 0.3f : std::max(3.0f, size * 0.11f);
     for (int y = 0; y < size; ++y) {
         for (int x = 0; x < size; ++x) {
             float cr = 0, cg = 0, cb = 0, ca = 0;
             for (int sy = 0; sy < 4; ++sy) {
                 for (int sx = 0; sx < 4; ++sx) {
                     float d = std::hypot(x + (sx + 0.5f) / 4 - cx, y + (sy + 0.5f) / 4 - cx);
+                    if (d < r && ring) continue;
                     if (d < r) cr += c.r, cg += c.g, cb += c.b, ca += 1;
                     else if (d < r + 1.6f) cr += 1, cg += 1, cb += 1, ca += 1;
                     else if (d < r + 2.6f) ca += 0.6f;
@@ -396,6 +445,8 @@ void GlassWindow::Destroy() {
         if (c) DestroyCursor(c);
         c = nullptr;
     }
+    if (eraserCursor_) DestroyCursor(eraserCursor_);
+    eraserCursor_ = nullptr;
     std::lock_guard<std::recursive_mutex> g(gpuLock_);
     dvisual_.Reset();
     dtarget_.Reset();
@@ -828,10 +879,10 @@ ComPtr<ID2D1PathGeometry> GlassWindow::StrokeGeometry(const Stroke& st) {
 }
 
 // The drawing layer for this frame (render thread, gpuLock_ held): the strokes mapped from picture units to the
-// window through the current layout and region zoom, clipped to the picture, plus the draw-mode hint.
-bool GlassWindow::RenderInkLocked(const Layout& L, const float zoom[4], const Shared& s, bool hint) {
+// window through the current layout and region zoom, clipped to the picture, plus the draw-mode toolbar.
+bool GlassWindow::RenderInkLocked(const Layout& L, const float zoom[4], const Shared& s, bool toolbar) {
     std::lock_guard<std::mutex> lk(drawMu_);
-    if ((strokes_.empty() && !hint) || !d2d_ || L.video.W() < 1.0f || L.video.H() < 1.0f) return false;
+    if ((strokes_.empty() && !toolbar) || !d2d_ || L.video.W() < 1.0f || L.video.H() < 1.0f) return false;
     if (!inkRt_ || inkW_ < s.winW || inkH_ < s.winH) {
         inkRt_.Reset();
         inkBrush_.Reset();
@@ -901,37 +952,7 @@ bool GlassWindow::RenderInkLocked(const Layout& L, const float zoom[4], const Sh
     }
     inkRt_->SetTransform(identity);
     inkRt_->PopAxisAlignedClip();
-    if (hint && dwrite_) {
-        if (!hintFormat_ || hintDp_ != s.dp) {
-            hintFormat_.Reset();
-            dwrite_->CreateTextFormat(L"Segoe UI Variable Text", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
-                                      DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 13.0f * s.dp, L"",
-                                      hintFormat_.GetAddressOf());
-            hintDp_ = s.dp;
-        }
-        std::wstring text = std::wstring(kToolNames[std::clamp(s.drawTool, 0, 2)]) + L"  ·  Drawing (D to exit)";
-        ComPtr<IDWriteTextLayout> tl;
-        if (hintFormat_)
-            dwrite_->CreateTextLayout(text.c_str(), UINT32(text.size()), hintFormat_.Get(), 2000.0f, 200.0f,
-                                      tl.GetAddressOf());
-        DWRITE_TEXT_METRICS m{};
-        if (tl && SUCCEEDED(tl->GetMetrics(&m))) {
-            float dp = s.dp, pad = 11.0f * dp, dot = 8.0f * dp, gap = 7.0f * dp;
-            float bw = pad + dot + gap + m.width + pad, bh = m.height + 10.0f * dp;
-            if (bw < L.video.W() - 16.0f * dp && bh * 3.0f < L.video.H()) {
-                float x0 = L.video.CX() - bw * 0.5f, y0 = L.video.y1 - bh - 16.0f * dp;
-                inkBrush_->SetOpacity(1.0f);
-                inkBrush_->SetColor(D2D1_COLOR_F{0, 0, 0, 0.58f});
-                inkRt_->FillRoundedRectangle(D2D1_ROUNDED_RECT{{x0, y0, x0 + bw, y0 + bh}, bh * 0.5f, bh * 0.5f},
-                                             inkBrush_.Get());
-                inkBrush_->SetColor(kInkColors[std::clamp(s.drawColor, 0, 3)]);
-                inkRt_->FillEllipse(D2D1_ELLIPSE{{x0 + pad + dot * 0.5f, y0 + bh * 0.5f}, dot * 0.5f, dot * 0.5f},
-                                    inkBrush_.Get());
-                inkBrush_->SetColor(D2D1_COLOR_F{1, 1, 1, 0.95f});
-                inkRt_->DrawTextLayout(D2D1_POINT_2F{x0 + pad + dot + gap, y0 + 5.0f * dp}, tl.Get(), inkBrush_.Get());
-            }
-        }
-    }
+    if (toolbar) RenderDrawBarLocked(L, s);
     HRESULT hr = inkRt_->EndDraw();
     if (FAILED(hr)) {
         LOGW("draw: drawing layer lost (0x%08lx), recreating it", hr);
@@ -939,6 +960,118 @@ bool GlassWindow::RenderInkLocked(const Layout& L, const float zoom[4], const Sh
         return false;
     }
     return true;
+}
+
+// The draw-mode toolbar, in the style of the glass capsule: a dark see-through pill with a light rim, white line
+// icons, the chosen tool and colour marked. Icons are drawn on a 16-unit grid round each button's centre.
+void GlassWindow::RenderDrawBarLocked(const Layout& L, const Shared& s) {
+    DrawBar bar = ComputeDrawBar(L.video, s.dp);
+    if (!bar.on) return;
+    ID2D1SolidColorBrush* br = inkBrush_.Get();
+    ID2D1StrokeStyle* round = inkStyle_.Get();
+    const float u = bar.r / 11.0f, half = std::min(bar.box.W(), bar.box.H()) * 0.5f;
+    br->SetOpacity(1.0f);
+    br->SetColor(D2D1_COLOR_F{0.08f, 0.08f, 0.10f, 0.62f});
+    D2D1_ROUNDED_RECT pill{{bar.box.x0, bar.box.y0, bar.box.x1, bar.box.y1}, half, half};
+    inkRt_->FillRoundedRectangle(pill, br);
+    br->SetColor(D2D1_COLOR_F{1, 1, 1, 0.22f});
+    inkRt_->DrawRoundedRectangle(pill, br, std::max(1.0f, s.dp));
+    // Group separators.
+    bool vertical = bar.box.H() > bar.box.W();
+    for (int i : {int(kBarRed), int(kBarUndo), int(kBarDone)}) {
+        D2D1_POINT_2F m{(bar.c[i - 1].x + bar.c[i].x) * 0.5f, (bar.c[i - 1].y + bar.c[i].y) * 0.5f};
+        float l = bar.r * 0.55f;
+        inkRt_->DrawLine(vertical ? D2D1_POINT_2F{m.x - l, m.y} : D2D1_POINT_2F{m.x, m.y - l},
+                         vertical ? D2D1_POINT_2F{m.x + l, m.y} : D2D1_POINT_2F{m.x, m.y + l}, br, std::max(1.0f, s.dp));
+    }
+    // The chosen tool, and the button under the mouse.
+    auto disc = [&](int i, float a) {
+        br->SetColor(D2D1_COLOR_F{1, 1, 1, a});
+        inkRt_->FillEllipse(D2D1_ELLIPSE{bar.c[i], bar.r * 0.88f, bar.r * 0.88f}, br);
+    };
+    disc(std::clamp(s.drawTool, 0, 3), 0.24f);
+    if (s.drawHover >= 0 && s.drawHover < kBarCount && s.drawHover != s.drawTool) disc(s.drawHover, 0.12f);
+    D2D1_POINT_2F c{};
+    auto P = [&](float x, float y) { return D2D1_POINT_2F{c.x + x * u, c.y + y * u}; };
+    auto line = [&](float ax, float ay, float bx, float by, float w) {
+        inkRt_->DrawLine(P(ax, ay), P(bx, by), br, w * u, round);
+    };
+    const D2D1_COLOR_F white{1, 1, 1, 0.95f};
+    for (int i = 0; i < kBarCount; ++i) {
+        c = bar.c[i];
+        br->SetColor(white);
+        bool off = (i == kBarUndo && undo_.empty()) || (i == kBarClear && strokes_.empty());
+        br->SetOpacity(off ? 0.35f : 1.0f);
+        switch (i) {
+        case kBarPen:
+            line(-4, 4, 5, -5, 3.0f);
+            line(-6.5f, 6.5f, -5, 5, 1.6f);
+            break;
+        case kBarArrow:
+            line(-5, 5, 5, -5, 1.8f);
+            line(5, -5, -0.5f, -5, 1.8f);
+            line(5, -5, 5, 0.5f, 1.8f);
+            break;
+        case kBarHighlighter:
+            br->SetOpacity(0.6f);
+            line(-5, 3, 5, -3, 5.5f);
+            break;
+        case kBarEraser: {  // a block at 45 degrees, its rubber end marked
+            const float k = 0.7071f;
+            auto R = [&](float x, float y) { return P(k * (x + y), k * (y - x)); };
+            D2D1_POINT_2F q[4] = {R(-6.5f, -3.5f), R(6.5f, -3.5f), R(6.5f, 3.5f), R(-6.5f, 3.5f)};
+            for (int j = 0; j < 4; ++j) inkRt_->DrawLine(q[j], q[(j + 1) % 4], br, 1.6f * u, round);
+            inkRt_->DrawLine(R(-1.5f, -3.5f), R(-1.5f, 3.5f), br, 1.6f * u, round);
+            break;
+        }
+        case kBarRed:
+        case kBarYellow:
+        case kBarGreen:
+        case kBarBlue: {
+            int col = i - kBarRed;
+            br->SetColor(kInkColors[col]);
+            inkRt_->FillEllipse(D2D1_ELLIPSE{c, 6.0f * u, 6.0f * u}, br);
+            if (col == s.drawColor && s.drawTool != kEraser) {
+                br->SetColor(white);
+                inkRt_->DrawEllipse(D2D1_ELLIPSE{c, 8.8f * u, 8.8f * u}, br, 1.6f * u);
+            }
+            break;
+        }
+        case kBarUndo: {  // a hook arrow pointing back
+            ComPtr<ID2D1PathGeometry> g;
+            ComPtr<ID2D1GeometrySink> sink;
+            if (SUCCEEDED(d2d_->CreatePathGeometry(g.GetAddressOf())) && SUCCEEDED(g->Open(sink.GetAddressOf()))) {
+                sink->BeginFigure(P(-6, -3), D2D1_FIGURE_BEGIN_HOLLOW);
+                sink->AddLine(P(2, -3));
+                sink->AddArc(D2D1_ARC_SEGMENT{P(2, 5), D2D1_SIZE_F{4 * u, 4 * u}, 0, D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                                              D2D1_ARC_SIZE_SMALL});
+                sink->AddLine(P(-3, 5));
+                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                if (SUCCEEDED(sink->Close())) inkRt_->DrawGeometry(g.Get(), br, 1.8f * u, round);
+            }
+            line(-6, -3, -3, -6, 1.8f);
+            line(-6, -3, -3, 0, 1.8f);
+            break;
+        }
+        case kBarClear:  // a bin
+            line(-6, -4, 6, -4, 1.6f);
+            line(-2, -4, -2, -6, 1.6f);
+            line(-2, -6, 2, -6, 1.6f);
+            line(2, -6, 2, -4, 1.6f);
+            line(-4.5f, -4, -3.5f, 6, 1.6f);
+            line(-3.5f, 6, 3.5f, 6, 1.6f);
+            line(3.5f, 6, 4.5f, -4, 1.6f);
+            line(-1.3f, -1.5f, -1.3f, 3.5f, 1.4f);
+            line(1.3f, -1.5f, 1.3f, 3.5f, 1.4f);
+            break;
+        case kBarDone:  // a tick: stop drawing
+            line(-5, 0, -1.5f, 4, 2.0f);
+            line(-1.5f, 4, 5.5f, -4, 2.0f);
+            break;
+        default: break;
+        }
+    }
+    br->SetOpacity(1.0f);
 }
 
 void GlassWindow::RenderLocked() {
@@ -1055,7 +1188,7 @@ void GlassWindow::RenderLocked() {
         float ly = gcy + gs * 1.45f;
         Set4(cb.label, gcx - lw * ls * 0.5f, ly, gcx + lw * ls * 0.5f, ly + lh * ls);
         Set4(cb.labelInfo, labelSrv_ ? 1.0f : 0.0f, gcx, gcy, gs);
-        // Screenshots are taken from this frame: they show the strokes but not the draw-mode hint.
+        // Screenshots are taken from this frame: they show the strokes but not the draw-mode toolbar.
         bool shot = shotReq_.exchange(false);
         bool ink = RenderInkLocked(L, zoomUv, s, s.drawHint && !s.obs && !shot);
         Set4(cb.ink, ink ? 1.0f / float(inkW_) : 0.0f, ink ? 1.0f / float(inkH_) : 0.0f, ink ? 1.0f : 0.0f, 0);
@@ -1658,27 +1791,28 @@ void GlassWindow::SetDrawMode(bool on) {
         EndStroke();
     }
     drawMode_ = on;
+    barHover_ = -1;
     if (on && zoomArmed_) zoomArmed_ = false;
-    LOGI("draw: %s", on ? "on (P pen, A arrow, H highlighter, 1-4 colour, Backspace undo, C clear)" : "off");
+    LOGI("draw: %s", on ? "on (toolbar; P pen, A arrow, H highlighter, E eraser, 1-4 colour, Backspace undo, C clear)"
+                        : "off");
     PublishDrawHint();
     UpdateControls();
-    POINT pt;
-    GetCursorPos(&pt);
-    if (WindowFromPoint(pt) == hwnd_) SendMessageW(hwnd_, WM_SETCURSOR, WPARAM(hwnd_), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+    RefreshCursor();
 }
 
 void GlassWindow::SetDrawTool(int tool) {
-    drawTool_ = tool;
-    LOGI("draw: %s", WideToUtf8(kToolNames[tool]).c_str());
+    drawTool_ = std::clamp(tool, 0, 3);
+    LOGI("draw: %s", WideToUtf8(kToolNames[drawTool_]).c_str());
     PublishDrawHint();
+    RefreshCursor();
 }
 
+// A colour picks a drawing tool again after the eraser.
 void GlassWindow::SetDrawColor(int color) {
     drawColor_ = color;
+    if (drawTool_ == kEraser) SetDrawTool(kPen);
     PublishDrawHint();
-    POINT pt;
-    GetCursorPos(&pt);
-    if (WindowFromPoint(pt) == hwnd_) SendMessageW(hwnd_, WM_SETCURSOR, WPARAM(hwnd_), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+    RefreshCursor();
 }
 
 void GlassWindow::PublishDrawHint() {
@@ -1687,14 +1821,66 @@ void GlassWindow::PublishDrawHint() {
         shared_.drawHint = drawMode_;
         shared_.drawTool = drawTool_;
         shared_.drawColor = drawColor_;
+        shared_.drawHover = drawMode_ ? barHover_ : -1;
     }
     Wake();
 }
 
+void GlassWindow::RefreshCursor() {
+    POINT pt;
+    GetCursorPos(&pt);
+    if (WindowFromPoint(pt) == hwnd_) SendMessageW(hwnd_, WM_SETCURSOR, WPARAM(hwnd_), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+}
+
 HCURSOR GlassWindow::DrawCursor() {
+    POINT pt;
+    GetCursorPos(&pt);
+    ScreenToClient(hwnd_, &pt);
+    bool over = false;
+    int b = DrawBarAt(float(pt.x), float(pt.y), &over);
+    if (over && !drawing_) return LoadCursorW(nullptr, b >= 0 ? IDC_HAND : IDC_ARROW);  // the toolbar is clicked
+    int size = GetSystemMetricsForDpi(SM_CXCURSOR, GetDpiForWindow(hwnd_));
+    if (drawTool_ == kEraser) {
+        if (!eraserCursor_) eraserCursor_ = MakeDotCursor(D2D1_COLOR_F{1, 1, 1, 1}, size, true);
+        return eraserCursor_ ? eraserCursor_ : LoadCursorW(nullptr, IDC_CROSS);
+    }
     HCURSOR& c = drawCursors_[std::clamp(drawColor_, 0, 3)];
-    if (!c) c = MakeDotCursor(kInkColors[std::clamp(drawColor_, 0, 3)], GetSystemMetricsForDpi(SM_CXCURSOR, GetDpiForWindow(hwnd_)));
+    if (!c) c = MakeDotCursor(kInkColors[std::clamp(drawColor_, 0, 3)], size);
     return c ? c : LoadCursorW(nullptr, IDC_CROSS);
+}
+
+int GlassWindow::DrawBarAt(float x, float y, bool* over) {
+    *over = false;
+    if (!drawMode_ || ObsMode()) return -1;  // OBS mode shows no toolbar
+    RectF v;
+    float dp;
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        v = pubLayout_.video;
+        dp = shared_.dp;
+    }
+    DrawBar bar = ComputeDrawBar(v, dp);
+    if (!bar.on || !bar.box.Contains(x, y)) return -1;
+    *over = true;
+    for (int i = 0; i < kBarCount; ++i)
+        if (std::hypot(x - bar.c[i].x, y - bar.c[i].y) <= bar.r) return i;
+    return -1;
+}
+
+void GlassWindow::PressDrawBar(int b) {
+    LOGI("draw: toolbar %s", kBarNames[std::clamp(b, 0, kBarCount - 1)]);
+    if (b >= kBarPen && b <= kBarEraser) SetDrawTool(b - kBarPen);
+    else if (b >= kBarRed && b <= kBarBlue) SetDrawColor(b - kBarRed);
+    else if (b == kBarUndo) UndoStroke();
+    else if (b == kBarClear) ClearDrawing(true);
+    else if (b == kBarDone) SetDrawMode(false);
+    Wake();  // undo / clear dim when there is nothing left
+}
+
+void GlassWindow::UpdateDrawBarHover(int b) {
+    if (b == barHover_) return;
+    barHover_ = b;
+    PublishDrawHint();
 }
 
 // A client point in picture units, through the frame on screen (layout and region zoom). False outside the picture.
@@ -1719,6 +1905,20 @@ void GlassWindow::BeginStroke(float x, float y) {
     D2D1_POINT_2F p;
     float k = 1;
     if (!PictureFromClient(x, y, &p, &k)) return;  // starts on the picture only
+    if (drawTool_ == kEraser) {  // the eraser removes every stroke its circle touches along the drag
+        eraseR_ = kEraserDp * dp_ / k;
+        eraseStep_ = UndoStep{};
+        lastErase_ = p;
+        {
+            std::lock_guard<std::mutex> lk(drawMu_);
+            EraseAlongLocked(p, p);
+        }
+        erasing_ = drawing_ = true;
+        lastInk_ = POINT{LONG(x), LONG(y)};
+        SetCapture(hwnd_);
+        Wake();
+        return;
+    }
     st.tool = drawTool_;
     st.color = drawColor_;
     // On-screen width now; kept in picture units, so a stroke drawn zoomed in is fine detail when zoomed out.
@@ -1742,6 +1942,15 @@ void GlassWindow::ExtendStroke(float x, float y) {
     D2D1_POINT_2F p;
     float k = 1;
     PictureFromClient(x, y, &p, &k);  // outside the picture is fine: the layer is clipped to it
+    if (erasing_) {
+        {
+            std::lock_guard<std::mutex> lk(drawMu_);
+            EraseAlongLocked(lastErase_, p);
+        }
+        lastErase_ = p;
+        Wake();
+        return;
+    }
     {
         std::lock_guard<std::mutex> lk(drawMu_);
         if (strokes_.empty() || !strokes_.back().open) return;
@@ -1753,7 +1962,15 @@ void GlassWindow::ExtendStroke(float x, float y) {
 }
 
 void GlassWindow::EndStroke() {
-    {
+    if (erasing_) {
+        erasing_ = false;
+        std::lock_guard<std::mutex> lk(drawMu_);
+        if (!eraseStep_.removed.empty()) {
+            LOGI("draw: erased %zu strokes, %zu left", eraseStep_.removed.size(), strokes_.size());
+            undo_.push_back(std::move(eraseStep_));
+        }
+        eraseStep_ = UndoStep{};
+    } else {
         std::lock_guard<std::mutex> lk(drawMu_);
         if (strokes_.empty() || !strokes_.back().open) return;
         Stroke& st = strokes_.back();
@@ -1762,20 +1979,57 @@ void GlassWindow::EndStroke() {
         if (st.tool == kArrow &&
             std::hypot(st.pts[1].x - st.pts[0].x, st.pts[1].y - st.pts[0].y) < st.width * 3.0f)
             strokes_.pop_back();
+        else
+            undo_.push_back(UndoStep{true, {}});
         LOGD("draw: %zu strokes", strokes_.size());
+    }
+    {
+        std::lock_guard<std::mutex> lk(drawMu_);
+        if (undo_.size() > 500) undo_.erase(undo_.begin());  // the oldest steps can't be taken back any more
     }
     Wake();
 }
 
+// Takes back the last change: a stroke drawn, or the strokes an erase or a clear removed, in their places.
 void GlassWindow::UndoStroke() {
     if (drawing_) return;
     {
         std::lock_guard<std::mutex> lk(drawMu_);
-        if (strokes_.empty()) return;
-        strokes_.pop_back();
-        LOGI("draw: undo, %zu strokes left", strokes_.size());
+        if (undo_.empty()) return;
+        UndoStep st = std::move(undo_.back());
+        undo_.pop_back();
+        if (st.add) {
+            if (!strokes_.empty()) strokes_.pop_back();
+        } else {
+            for (auto it = st.removed.rbegin(); it != st.removed.rend(); ++it)
+                strokes_.insert(strokes_.begin() + long(std::min(it->first, strokes_.size())), std::move(it->second));
+        }
+        LOGI("draw: undo, %zu strokes", strokes_.size());
     }
     Wake();
+}
+
+// Stroke-level erase: removes each finished stroke that comes within the eraser's radius of the segment a-b
+// (sampled every half radius), remembering it and its place for undo.
+void GlassWindow::EraseAlongLocked(D2D1_POINT_2F a, D2D1_POINT_2F b) {
+    float r = std::max(eraseR_, 1e-5f);
+    int steps = std::clamp(int(std::ceil(std::hypot(b.x - a.x, b.y - a.y) / (r * 0.5f))), 1, 400);
+    for (size_t i = strokes_.size(); i-- > 0;) {
+        const Stroke& st = strokes_[i];
+        if (st.open || st.pts.empty()) continue;
+        float reach = r + st.width * 0.5f;
+        bool hit = false;
+        for (int k = 0; k <= steps && !hit; ++k) {
+            float t = float(k) / float(steps);
+            D2D1_POINT_2F p{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
+            if (st.pts.size() == 1) hit = std::hypot(p.x - st.pts[0].x, p.y - st.pts[0].y) <= reach;
+            for (size_t j = 0; j + 1 < st.pts.size() && !hit; ++j)
+                hit = SegmentDistance(p, st.pts[j], st.pts[j + 1]) <= reach;
+        }
+        if (!hit) continue;
+        eraseStep_.removed.emplace_back(i, std::move(strokes_[i]));
+        strokes_.erase(strokes_.begin() + long(i));
+    }
 }
 
 bool GlassWindow::HasDrawing() {
@@ -1783,17 +2037,24 @@ bool GlassWindow::HasDrawing() {
     return !strokes_.empty();
 }
 
-void GlassWindow::ClearDrawing() {
+void GlassWindow::ClearDrawing(bool undoable) {
     if (drawing_) {
-        drawing_ = false;
+        drawing_ = false;  // first, so WM_CAPTURECHANGED doesn't finish the stroke twice
         if (GetCapture() == hwnd_) ReleaseCapture();
+        EndStroke();
     }
     {
         std::lock_guard<std::mutex> lk(drawMu_);
+        if (!undoable) undo_.clear();  // a new picture: nothing to take back
         if (strokes_.empty()) return;
+        if (undoable) {
+            UndoStep st;
+            for (size_t i = strokes_.size(); i-- > 0;) st.removed.emplace_back(i, std::move(strokes_[i]));
+            undo_.push_back(std::move(st));
+        }
         strokes_.clear();
     }
-    LOGI("draw: cleared");
+    LOGI("draw: cleared%s", undoable ? " (Backspace brings it back)" : "");
     Wake();
 }
 
@@ -2365,7 +2626,7 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     if (cmd == 4) ToggleObsMode();
     if (cmd == 5) ToggleRegionZoom();
     if (cmd == 6) ToggleDrawMode();
-    if (cmd == 7) ClearDrawing();
+    if (cmd == 7) ClearDrawing(true);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2542,6 +2803,10 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             SendMessageW(hwnd_, WM_NCLBUTTONDOWN, HTCAPTION, MAKELPARAM(pt.x, pt.y));
             return 0;
         }
+        if (drawMode_) {
+            bool overBar = false;
+            UpdateDrawBarHover(DrawBarAt(x, y, &overBar));
+        }
         UpdateHover(x, y);
         UpdateControls();
         return 0;
@@ -2549,6 +2814,7 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
     case WM_MOUSELEAVE:
         mouseInside_ = false;
         overPill_ = false;
+        UpdateDrawBarHover(-1);
         if (hoverBtn_ != -1) {
             hoverBtn_ = -1;
             std::lock_guard<std::mutex> lk(stateMu_);
@@ -2571,6 +2837,12 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         if (drawMode_ && sessionLive_) {  // draw mode: drags draw instead of moving the window
+            bool overBar = false;
+            int b = DrawBarAt(x, y, &overBar);
+            if (overBar) {  // the toolbar acts, and never starts a stroke
+                if (b >= 0) PressDrawBar(b);
+                return 0;
+            }
             BeginStroke(x, y);
             return 0;
         }
@@ -2630,8 +2902,15 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
         }
         break;
     case WM_LBUTTONDBLCLK: {
-        if (drawMode_ && sessionLive_ && !zoomArmed_) {  // a quick second click is another stroke
-            BeginStroke(float(GET_X_LPARAM(l)), float(GET_Y_LPARAM(l)));
+        if (drawMode_ && sessionLive_ && !zoomArmed_) {  // a quick second click is another stroke (or button press)
+            float x = float(GET_X_LPARAM(l)), y = float(GET_Y_LPARAM(l));
+            bool overBar = false;
+            int b = DrawBarAt(x, y, &overBar);
+            if (overBar) {
+                if (b >= 0) PressDrawBar(b);
+            } else {
+                BeginStroke(x, y);
+            }
             return 0;
         }
         if (Zoomed()) {
@@ -2701,7 +2980,10 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             ToggleDrawMode();
             return 0;
         case 'C':
-            if (pro_) ClearDrawing();
+            if (pro_) ClearDrawing(true);
+            return 0;
+        case 'E':
+            if (drawMode_) SetDrawTool(kEraser);
             return 0;
         case VK_BACK:
             if (pro_) UndoStroke();

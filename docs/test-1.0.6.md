@@ -50,22 +50,27 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 
 | # | Steps | Expected |
 |---|---|---|
-| 1 | Mirror in the glass window, press <kbd>D</kbd>. | The cursor over the window becomes a red dot. A small dark pill at the bottom of the picture says "Pen · Drawing (D to exit)". Hovering shows no capsule. |
+| 1 | Mirror in the glass window, press <kbd>D</kbd>. | The cursor over the window becomes a red dot. A dark see-through toolbar with a light rim appears on the picture (along the bottom for a landscape picture, down the left side for a portrait phone): pen (marked), arrow, highlighter, eraser · red (ringed), yellow, green, blue · undo, bin (both dimmed with no strokes) · ✓. Hovering shows no capsule. |
 | 2 | Drag across the picture. | A smooth red line follows the mouse. The window does not move. |
-| 3 | Press <kbd>2</kbd>, <kbd>3</kbd>, <kbd>4</kbd>, <kbd>1</kbd> and draw after each. | The cursor dot and the pill's dot change colour: yellow, green, blue, red; each new stroke uses that colour, old strokes keep theirs. |
-| 4 | Press <kbd>A</kbd> and drag. Press <kbd>H</kbd> and drag over some text. Press <kbd>P</kbd> and drag. | An arrow with a filled head pointing where the drag ended; a wide see-through highlighter stroke (overlapping parts don't get darker); then the pen again. The pill names the tool. A plain click with the arrow leaves nothing; a click with the pen leaves a dot. |
+| 3 | Press <kbd>2</kbd>, <kbd>3</kbd>, <kbd>4</kbd>, <kbd>1</kbd> and draw after each. | The cursor dot and the toolbar's ringed colour change: yellow, green, blue, red; each new stroke uses that colour, old strokes keep theirs. |
+| 4 | Press <kbd>A</kbd> and drag. Press <kbd>H</kbd> and drag over some text. Press <kbd>P</kbd> and drag. | An arrow with a filled head pointing where the drag ended; a wide see-through highlighter stroke (overlapping parts don't get darker); then the pen again. The toolbar marks the tool. A plain click with the arrow leaves nothing; a click with the pen leaves a dot. |
 | 5 | Quick double-click with the pen. | Two dots; the window doesn't go full screen. |
-| 6 | Press <kbd>Backspace</kbd> twice, then <kbd>C</kbd>. | The last two strokes disappear one by one, then all of them. |
+| 6 | Press <kbd>Backspace</kbd> twice, then <kbd>C</kbd>, then <kbd>Backspace</kbd>. | The last two strokes disappear one by one, then all of them, then they all come back. |
 | 7 | Draw a few strokes, then move the window (press <kbd>D</kbd> to stop drawing, drag), resize it from a corner and use the mouse wheel. | The strokes stay on the same spots of the picture and scale with it. |
 | 8 | Zoom into a region (<kbd>Z</kbd> then drag) over a stroke; draw while zoomed; zoom out. | The strokes zoom with the picture. A stroke drawn while zoomed in is thinner after zooming out. |
 | 9 | Full screen (<kbd>F</kbd>) with strokes. | The strokes are on the same spots of the full-screen picture. The cursor stays visible as the dot while drawing. |
-| 10 | Press <kbd>S</kbd> with strokes on and draw mode on. | The PNG and the clipboard picture contain the strokes but not the "Drawing (D to exit)" pill. |
-| 11 | OBS mode (<kbd>O</kbd>) with strokes, draw mode on. | OBS captures the strokes; the pill is not shown in OBS mode. |
+| 10 | Press <kbd>S</kbd> with strokes on and draw mode on. | The PNG and the clipboard picture contain the strokes but not the toolbar. |
+| 11 | OBS mode (<kbd>O</kbd>) with strokes, draw mode on. | OBS captures the strokes; the toolbar is not shown in OBS mode (and clicking where it was draws). |
 | 12 | Record (<kbd>R</kbd>) while drawing, stop, play the MP4. | The recording has no strokes (it is the sender's own stream). |
-| 13 | Press <kbd>D</kbd> or <kbd>Esc</kbd>. | Drawing stops: arrow cursor, pill gone, the strokes stay; dragging moves the window again. <kbd>C</kbd> still clears. With a zoom, the first <kbd>Esc</kbd> zooms out, the next stops drawing. |
+| 13 | Press <kbd>D</kbd> or <kbd>Esc</kbd>. | Drawing stops: arrow cursor, toolbar gone, the strokes stay; dragging moves the window again. <kbd>C</kbd> still clears. With a zoom, the first <kbd>Esc</kbd> zooms out, the next stops drawing. |
 | 14 | With strokes on, rotate the phone; or end the session and mirror again. | The strokes are gone and draw mode is off. |
 | 15 | Tray menu during mirroring; right-click in the window. | "Draw on screen  D" in both, ticked while drawing; the window menu also has "Clear drawing  C" when there are strokes. |
 | 16 | Free edition: press <kbd>D</kbd>, or tray → "Draw on screen (Pro)…". | The AirGlass Pro dialog: "Drawing on screen is part of AirGlass Pro…". |
+| 17 | Draw a few strokes, press <kbd>E</kbd> and drag across two of them. | The cursor is an empty white ring; the two strokes vanish as the ring touches them (whole strokes), the others stay. The toolbar marks the eraser and no colour is ringed. <kbd>Backspace</kbd> brings both back in place. |
+| 18 | With the eraser, press <kbd>3</kbd> (or click green on the toolbar). | Back to the pen, in green. |
+| 19 | Mouse only: click each toolbar button in turn (pen, arrow, highlighter, eraser, the colours), drawing after each; click undo; click the bin; click undo again; click ✓. | Each click changes the tool or colour (the cursor changes over the picture; over the toolbar it is a hand) and never leaves a dot or a stroke; undo takes back the last stroke; the bin clears all; undo brings them back; ✓ stops drawing. Quick double-clicks on undo take back two strokes. Starting a drag on the toolbar draws nothing. |
+| 20 | Small window (mouse wheel down to the smallest), portrait and landscape. | The toolbar shrinks to fit inside the picture; on a very small picture it is left out (keys still work). |
+| 21 | Full screen (<kbd>F</kbd>) in draw mode. | The toolbar sits on the full-screen picture, at its normal size. |
 
 ## Allow-list (Pro, tray → Ask before new devices connect)
 
