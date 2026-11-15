@@ -108,6 +108,11 @@ void Config::Load() {
     obsMode = ReadInt(path, L"window", L"obs", 0) != 0;
     welcomed = ReadInt(path, L"app", L"welcomed", 0) != 0;
     debugLog = ReadInt(path, L"app", L"debuglog", 0) != 0;
+    // Read-only settings: set by hand in config.ini, never written back (absent = default).
+    statusHttp = ReadInt(path, L"status", L"http", 0) != 0;
+    keepAwake = ReadInt(path, L"display", L"keepawake", 1) != 0;
+    wakeDisplay = ReadInt(path, L"display", L"wake", 1) != 0;
+    startFull = ReadInt(path, L"window", L"full", 0) != 0;
     licenseKey = WideToUtf8(Read(path, L"license", L"key"));
     licenseInstance = WideToUtf8(Read(path, L"license", L"instance"));
     proUnlocked = _wtoi64(Read(path, L"license", L"unlocked").c_str());

@@ -17,6 +17,7 @@
 #include "net/bplist.h"
 #include "net/mdns.h"
 #include "net/netutil.h"
+#include "net/status_board.h"
 #include "ui/allow.h"
 #include "ui/glass_window.h"
 #include "ui/icon.h"
@@ -249,6 +250,9 @@ private:
     GlassWindow& TvGlass();  // the window TV Mode drives (the most recent session)
     uint64_t TvSid() const { return tvWin_ >= 0 ? live_[tvWin_].sid : 0; }
     void EmitNowPlaying();
+    // LAN status board (GET /status) and keeping the display on while mirroring (UI thread).
+    void PublishStatus();
+    void KeepAwake(bool on);
     void MediaLoop();
     // AirGlass Pro (UI thread).
     void ShowUpgrade(const std::wstring& reason);
@@ -275,6 +279,8 @@ private:
     AirPlayServer server_;
     MdnsResponder mdns_;
     ControlPipe pipe_;
+    StatusBoard status_;
+    bool awake_ = false;
     std::string name_;
     ReceiverInfo ri_;  // as advertised (mDNS) and served (/info)
     std::thread renameThread_;
@@ -745,6 +751,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
         }
 #endif
+        KeepAwake(true);  // before the window shows: the wake nudge must not count as a hover over it
         int wi = e->window > 0 && e->window < kWindows && Win(e->window) ? e->window : 0;
         GlassWindow& g = *Win(wi);
         uint64_t before = live_[wi].sid;
@@ -797,6 +804,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (j != wi && Win(j) && Win(j)->SessionLive() && GetForegroundWindow() == Win(j)->Hwnd()) FocusWindow(j);
         LOGI("sessions: session %llu (\"%s\") in window %d; %d mirroring at once", (unsigned long long)e->sid,
              e->name.c_str(), wi + 1, LiveCount());
+        PublishStatus();
         GlassWindow::TvLayout t = g.CurrentTvLayout();
         Emit(JsonWriter()
                  .Str("event", "started")
@@ -995,6 +1003,14 @@ void App::EmitStopped(uint64_t sid, const char* reason) {
             if (live_[i].sid) tvWin_ = i;
         if (tvWin_ >= 0) EmitState();
     }
+    // The display may sleep once no session mirrors. A takeover hands the display (and the status) straight to the
+    // new session, which publishes it, so pollers never see a gap.
+    if (strcmp(reason, "takeover") != 0) {
+        bool any = false;
+        for (const Announced& a : live_) any = any || a.sid;
+        if (!any) KeepAwake(false);
+        PublishStatus();
+    }
 }
 
 void App::EmitLayout(int window, bool byUser) {
@@ -1013,6 +1029,7 @@ void App::EmitLayout(int window, bool byUser) {
              .Raw("rect", rect)
              .Str("by", byUser ? "user" : "tv")
              .Done());
+    PublishStatus();  // the session's mode may have changed
 }
 
 GlassWindow& App::TvGlass() {
@@ -1027,13 +1044,84 @@ void App::EmitNowPlaying() {
         if (npSid_ && npSid_ != np.session)
             Emit(JsonWriter().Str("event", "nowplaying").Int("session", (long long)npSid_).Bool("active", false).Done());
         npSid_ = np.session;
+        PublishStatus();
         Emit(NowPlayingJson(np, true));
         SetTimer(msgWnd_, kTimerNowPlaying, 5000, nullptr);
     } else if (npSid_) {
         Emit(JsonWriter().Str("event", "nowplaying").Int("session", (long long)npSid_).Bool("active", false).Done());
         npSid_ = 0;
         KillTimer(msgWnd_, kTimerNowPlaying);
+        PublishStatus();
     }
+}
+
+// Everything a LAN app needs to show the session: one flat-ish object, no file paths.
+void App::PublishStatus() {
+    if (!cfg_.statusHttp && !loopback_) return;
+    JsonWriter w;
+    w.Int("v", 1).Str("receiver", name_);
+    int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+    char screen[48];
+    snprintf(screen, sizeof(screen), "[%d,%d]", sw, sh);
+    w.Raw("screen", screen);
+    // "mirror" is the most recent session (the one TV Mode follows); "sessions" lists every live one, by window.
+    auto session = [this](int i) {
+        const Announced& a = live_[i];
+        GlassWindow* g = Win(i);
+        return JsonWriter()
+            .Int("session", (long long)a.sid)
+            .Str("device", a.device)
+            .Str("model", a.model)
+            .Int("width", a.w)
+            .Int("height", a.h)
+            .Str("mode", g ? g->TvModeName() : "float");
+    };
+    if (TvSid()) w.Raw("mirror", session(tvWin_).Done());
+    else w.Null("mirror");
+    std::string list = "[";
+    for (int i = 0; i < kWindows; ++i) {
+        if (!live_[i].sid) continue;
+        if (list.size() > 1) list += ",";
+        list += session(i).Int("window", i + 1).Bool("recent", i == tvWin_).Done();
+    }
+    w.Raw("sessions", list + "]");
+    NowPlaying np;
+    if (server_.GetNowPlaying(np)) {
+        // Clients extrapolate the position from positionMs + rate between updates (about every 5 s while playing).
+        w.Raw("music", JsonWriter()
+                           .Int("session", (long long)np.session)
+                           .Str("device", np.device)
+                           .Str("title", np.title)
+                           .Str("artist", np.artist)
+                           .Str("album", np.album)
+                           .Int("durationMs", np.durationMs)
+                           .Int("positionMs", np.positionMs)
+                           .Int("rate", np.playing ? 1 : 0)
+                           .Int("artworkSeq", np.artworkSeq)
+                           .Str("codec", AudioDecoder::Name(np.format.ct))
+                           .Bool("lossless", np.format.Lossless())
+                           .Done());
+    } else {
+        w.Null("music");
+    }
+    status_.Publish(w.Done());
+}
+
+// A mirroring session keeps the display (and the PC) awake, and wakes a display that idled off so the picture
+// appears without touching the mouse. Execution state is per thread: this is always the UI thread.
+void App::KeepAwake(bool on) {
+    if (on == awake_ || !cfg_.keepAwake) return;
+    awake_ = on;
+    SetThreadExecutionState(on ? ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED : ES_CONTINUOUS);
+    if (on && cfg_.wakeDisplay && !loopback_) {
+        // ES_DISPLAY_REQUIRED resets the idle timer but doesn't reliably turn a display back on; a zero-length
+        // mouse move does, and moves nothing.
+        INPUT in{};
+        in.type = INPUT_MOUSE;
+        in.mi.dwFlags = MOUSEEVENTF_MOVE;
+        SendInput(1, &in, sizeof(in));
+    }
+    LOGI("display: %s", on ? "kept awake for mirroring" : "may sleep again");
 }
 
 void App::OnPipeCommand(const std::string& line) {
@@ -1170,6 +1258,7 @@ void App::OnSessionSize(uint64_t sid, int w, int h) {
         live_[i].h = h;
         if (i == tvWin_)  // TV Mode hears about the session it follows
             Emit(JsonWriter().Str("event", "size").Int("session", (long long)sid).Int("width", w).Int("height", h).Done());
+        PublishStatus();
     }
 }
 
@@ -1183,6 +1272,7 @@ bool App::CreateGlass(int i) {
     opt.longLandscape = cfg_.longLandscape;
     opt.obs = cfg_.obsMode;
     opt.index = i;
+    opt.startFull = cfg_.startFull;  // every window
     if (i == 1) glass2_ = std::make_unique<GlassWindow>();
     GlassWindow* g = Win(i);
     if (!g || !g->Create(inst_, iconBig_, iconSmall_, opt)) {
@@ -1420,6 +1510,11 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     if (pinOn)
         LOGI("pin: a code is required to connect%s, %zu paired devices", cfg_.pinManaged ? " (set machine-wide)" : "",
              loopback ? size_t(0) : cfg_.paired.size());
+    if (cfg_.statusHttp || loopback) {
+        server_.SetStatus(&status_);
+        LOGI("status: GET /status on the AirPlay port is on");
+    }
+    PublishStatus();
     if (!server_.Start(ri, uint16_t(cfg_.port), &glass_, &audio_, ev)) {
         MessageBoxW(nullptr, L"AirGlass could not open its network port.", L"AirGlass", MB_ICONERROR);
         return 1;

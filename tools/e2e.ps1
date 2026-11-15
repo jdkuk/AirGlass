@@ -13,8 +13,15 @@ Start-Sleep -Milliseconds 1500
 $args2 = @('stream') + $Media + @('--port', '7010')
 if ($Extra) { $args2 += $Extra.Split(' ') }
 $test = Start-Process -FilePath .\airglass_test.exe -ArgumentList $args2 -RedirectStandardOutput "$Shots\test_out.txt" -RedirectStandardError "$Shots\test_err.txt" -PassThru -NoNewWindow
+# Status board (GET /status, always on in loopback mode): a mirror session while streaming, none after.
+$statusJob = Start-Job { Start-Sleep 2.5; Invoke-RestMethod 'http://127.0.0.1:7010/status' -TimeoutSec 5 }
 & (Join-Path $PSScriptRoot 'capture.ps1') -OutPrefix "$Shots\e2e" -At $At
 $test.WaitForExit(30000) | Out-Null
+$during = Receive-Job $statusJob -Wait -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+$after = try { Invoke-RestMethod 'http://127.0.0.1:7010/status?wait=0' -TimeoutSec 5 } catch { $null }
+"--- status: during seq=$($during.seq) mirror=$($during.mirror.device) $($during.mirror.width)x$($during.mirror.height); after mirror=$($after.mirror)"
+if (-not $during.mirror -or $after.mirror -or @($during.sessions | Where-Object { $_ }).Count -ne 1 -or @($after.sessions | Where-Object { $_ }).Count -ne 0) { "FAIL status board" } else { "PASS status board" }
 "--- test output"
 Get-Content "$Shots\test_out.txt" | Select-Object -Last 6
 Start-Sleep -Milliseconds 800

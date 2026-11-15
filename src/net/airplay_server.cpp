@@ -12,6 +12,7 @@
 #include "net/mirror_stream.h"
 #include "net/netutil.h"
 #include "net/ntp_client.h"
+#include "net/status_board.h"
 
 namespace {
 
@@ -182,6 +183,7 @@ private:
     void GetParameter(const Request& req, Response& resp);
     void SetParameter(const Request& req, Response& resp);
     void Teardown(const Request& req, Response& resp);
+    void Status(const Request& req, Response& resp);
 
     void DeriveKey(const char* salt, uint8_t out[16]) const;
     std::string SenderId() const;
@@ -331,6 +333,11 @@ bool AirPlayServer::Connection::SendResponse(const Request& req, const Response&
 
 void AirPlayServer::Connection::Handle(const Request& req, Response& resp) {
     const std::string& m = req.method;
+    // Read-only session status for LAN apps (opt-in): plain HTTP on the AirPlay port, so it shares its firewall rule.
+    if (srv_->status_ && m == "GET" && req.protocol.compare(0, 5, "HTTP/") == 0 && req.uri.compare(0, 7, "/status") == 0) {
+        Status(req, resp);
+        return;
+    }
     LogWrite((m == "POST" && req.uri == "/feedback") ? LogLevel::Debug : LogLevel::Info,
              "rtsp[%llu]: %s %s %s (%zu bytes%s%s)", (unsigned long long)id_, m.c_str(), req.uri.c_str(),
              req.protocol.c_str(), req.body.size(), req.ContentType().empty() ? "" : ", ", req.ContentType().c_str());
@@ -388,6 +395,57 @@ void AirPlayServer::Connection::Handle(const Request& req, Response& resp) {
         resp.code = 501;
         resp.reason = "Not Implemented";
     }
+}
+
+// GET /status[?since=<seq>[&wait=<s>]] -> the StatusBoard object; with `since` equal to the current seq it waits
+// (up to `wait` s, default and max 25) for the next change. GET /status/artwork -> the music session's cover art.
+void AirPlayServer::Connection::Status(const Request& req, Response& resp) {
+    std::string path = req.uri, query;
+    size_t q = path.find('?');
+    if (q != std::string::npos) {
+        query = "&" + path.substr(q + 1);
+        path.resize(q);
+    }
+    auto param = [&](const char* k, long long def) {
+        std::string key = std::string("&") + k + "=";
+        size_t p = query.find(key);
+        return p == std::string::npos ? def : strtoll(query.c_str() + p + key.size(), nullptr, 10);
+    };
+    LOGD("status[%llu]: GET %s", (unsigned long long)id_, req.uri.c_str());
+    resp.Add("Access-Control-Allow-Origin", "*");
+    resp.Add("Cache-Control", "no-store");
+    if (path == "/status" || path == "/status/") {
+        int waitMs = int(std::clamp(param("wait", 25), 0LL, 25LL)) * 1000;
+        std::string json = srv_->status_->Read(param("since", -1), waitMs, [this] { return srv_->stop_ || kicked_; });
+        resp.body.assign(json.begin(), json.end());
+        resp.Add("Content-Type", "application/json; charset=utf-8");
+        return;
+    }
+    if (path == "/status/artwork") {
+        NowPlaying np;
+        std::vector<uint8_t> data;
+        if (srv_->GetNowPlaying(np) && np.artworkSeq && !np.artworkPath.empty()) {
+            HANDLE f = CreateFileW(np.artworkPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr,
+                                   OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (f != INVALID_HANDLE_VALUE) {
+                LARGE_INTEGER size{};
+                if (GetFileSizeEx(f, &size) && size.QuadPart > 0 && size.QuadPart < (16 << 20)) {
+                    data.resize(size_t(size.QuadPart));
+                    DWORD got = 0;
+                    if (!ReadFile(f, data.data(), DWORD(data.size()), &got, nullptr) || got != data.size()) data.clear();
+                }
+                CloseHandle(f);
+            }
+        }
+        if (!data.empty()) {
+            resp.body = std::move(data);
+            resp.Add("Content-Type", np.artworkType.empty() ? "image/jpeg" : np.artworkType);
+            return;
+        }
+    }
+    resp.code = 404;
+    resp.reason = "Not Found";
+    resp.Add("Content-Type", "text/plain");
 }
 
 void AirPlayServer::Connection::Info(const Request& req, Response& resp) {

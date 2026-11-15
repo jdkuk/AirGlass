@@ -1936,7 +1936,7 @@ void GlassWindow::ShowWindowForSession() {
     }
     if (debugFsIn_ > 0) SetTimer(hwnd_, kTimerDebugFsIn, UINT(debugFsIn_ * 1000), nullptr);
     if (debugFsOut_ > 0) SetTimer(hwnd_, kTimerDebugFsOut, UINT(debugFsOut_ * 1000), nullptr);
-    if ((tv_ && tvLayout_.mode == TvLayout::Full) || !pro_) EnterFullscreen(mon);
+    if ((tv_ && tvLayout_.mode == TvLayout::Full) || !pro_ || (opt_.startFull && !tv_)) EnterFullscreen(mon);
     if (tvHighlight_ >= 0) {
         std::lock_guard<std::mutex> lk(stateMu_);
         shared_.hoverBtn = tvHighlight_;

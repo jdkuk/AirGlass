@@ -10,6 +10,7 @@
 | [Building](building.md) | Developers | Toolchain, dependencies, build switches |
 | [Development & testing](development.md) | Developers | Loopback sender, headless snapshots, debug environment variables |
 | [Control pipe API](control-pipe.md) | Integrators | JSON-over-named-pipe API to place and drive the window |
+| [Status over HTTP](status-http.md) | Integrators | Opt-in read-only session status for apps on the LAN |
 | [Releasing](releasing.md) | Maintainers | Versioning, tags, the release workflow, store settings |
 
 ## Source map

@@ -20,6 +20,7 @@ public:
         int longLandscape = 0;
         bool obs = false;       // OBS mode (Pro)
         int index = 0;          // 0 = the first window, 1 = the second (Pro: two devices at once)
+        bool startFull = false;  // [window] full=1: every session opens full screen (Esc still floats it in Pro)
     };
     // Placement requested by TV Mode (over the control pipe).
     struct TvLayout {

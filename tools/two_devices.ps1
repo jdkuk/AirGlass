@@ -27,6 +27,13 @@ function Finish($p, [string]$name) {
     return $p.ExitCode
 }
 
+# GET /status (always on in loopback mode): "mirror" is the most recent session, "sessions" lists every live one.
+function Status {
+    try { Invoke-RestMethod 'http://127.0.0.1:7010/status?wait=0' -TimeoutSec 5 } catch { Write-Host "  status: $_"; $null }
+}
+function Live($st) { @($st.sessions | Where-Object { $_ }) }  # [] and null both count 0
+function Devices($st) { (Live $st | ForEach-Object { $_.device }) -join ',' }
+
 $ok = $true
 function Expect([bool]$cond, [string]$what) {
     if ($cond) { Write-Host "PASS $what" } else { Write-Host "FAIL $what"; $script:ok = $false }
@@ -43,6 +50,10 @@ if ($Free) {
     $a = Send 'iPhone-F1' @($portrait, $landscape)
     Start-Sleep 2
     $b = Send 'iPad-F2' @($landscape)
+    Start-Sleep 2
+    $st = Status
+    Write-Host "  status: mirror=$($st.mirror.device) sessions=$(Devices $st)"
+    Expect ($st.mirror.device -eq 'iPad-F2' -and (Live $st).Count -eq 1) 'status: one session, the new device'
     Expect ((Finish $b 'iPad-F2') -eq 0) 'the second device mirrors to the end'
     Expect ((Finish $a 'iPhone-F1') -eq 3) 'the first device was taken over'
 } else {
@@ -50,6 +61,13 @@ if ($Free) {
     $a = Send 'iPhone-A' @($portrait, $landscape)
     Start-Sleep 2
     $b = Send 'iPad-B' @($landscape)
+    Start-Sleep 2
+    $st = Status
+    Write-Host "  status: mirror=$($st.mirror.device) sessions=$(Devices $st)"
+    $recent = @(Live $st | Where-Object { $_.recent })
+    Expect ($st.mirror.device -eq 'iPad-B' -and $st.mirror.width -ge 0 -and $st.mirror.mode) 'status: mirror is the most recent session'
+    Expect ((Live $st).Count -eq 2 -and (Devices $st) -like '*iPhone-A*' -and (Devices $st) -like '*iPad-B*') 'status: sessions lists both'
+    Expect ($recent.Count -eq 1 -and $recent.device -eq 'iPad-B') 'status: one session is the recent one'
     Expect ((Finish $b 'iPad-B') -eq 0) 'the second device mirrors to the end next to the first'
     Expect ((Finish $a 'iPhone-A') -eq 0) 'the first device keeps mirroring while the second does'
     # A third device takes over the oldest of two.
@@ -64,6 +82,8 @@ if ($Free) {
 }
 
 Start-Sleep 1
+$st = Status
+Expect ($st -and $null -eq $st.mirror -and (Live $st).Count -eq 0) 'status: no session once all have ended'
 Stop-Process -Id $app.Id -ErrorAction SilentlyContinue
 Start-Sleep 1
 $text = Get-Content $log -Raw

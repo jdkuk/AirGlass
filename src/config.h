@@ -19,6 +19,10 @@ struct Config {
     bool obsMode = false;  // Pro: OBS mode, [window] obs
     bool welcomed = false;
     bool debugLog = false;
+    bool statusHttp = false;   // [status] http=1: serve GET /status on the AirPlay port (docs/status-http.md)
+    bool keepAwake = true;     // [display] keepawake=0: let the display sleep during a mirroring session
+    bool wakeDisplay = true;   // [display] wake=0: don't wake a sleeping display when mirroring starts
+    bool startFull = false;    // [window] full=1: every window opens full screen (e.g. a PC whose screen is a TV)
     std::string licenseKey, licenseInstance;  // AirGlass Pro (Lemon Squeezy key + activation id)
     long long proUnlocked = 0;                // unix time Pro was unlocked on this PC (refund window)
     int proSessions = 0;                      // mirroring sessions since then (refund: fewer than 10)

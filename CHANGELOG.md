@@ -49,12 +49,22 @@ All notable changes to AirGlass are documented here. The format is based on
   before. TV Mode drives the most recent session's window; under TV Mode the earlier window moves to the other
   corner. In OBS mode the second window is titled "AirGlass (OBS 2)".
 
+- Optional read-only status over HTTP on the AirPlay port (`GET /status`, long-poll, cover art), for LAN apps such as a
+  TV launcher. Off unless `[status] http=1` (see docs/status-http.md). With two devices mirroring, `mirror` is the
+  most recent session (as TV Mode) and `sessions` lists both.
+- `[window] full=1` opens every session full screen, in Pro too (for a PC whose screen is a TV); with two devices,
+  both windows.
+
 ### Changed
 - Pro: recordings now have sound. The mirrored session's audio is encoded to AAC (FFmpeg's built-in encoder) as a
   second track, kept in sync with the picture by the same clock; the picture is still copied without re-encoding.
   Sound that starts late or pauses becomes silence; a device that sends no sound gives a picture-only MP4 as before.
 - The AirGlass Pro dialog now lists what Pro includes: the floating glass window, screenshots, recording with sound,
   drawing, region zoom, OBS mode and the allow-list. The trial's welcome balloon names the new shortcuts.
+
+### Fixed
+- A mirroring session now keeps the display awake, and wakes a display that had idled off when it starts
+  (`[display] keepawake` / `wake` turn this off). With two devices, the display stays awake until both have stopped.
 
 ## [1.0.5] - 2026-11-15
 

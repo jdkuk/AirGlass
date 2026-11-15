@@ -158,3 +158,16 @@ Open log folder → `airglass.log`).
 | 14 | With *Ask before new devices connect* and/or *Require a code to connect* on, start the second device. | It is asked about / asked for a code as before; the first keeps mirroring meanwhile. |
 | 15 | TV Mode connected: mirror from two devices. | Both windows float topmost without taking the focus. When the second opens on the first one's corner, the first slides to the other bottom (or top) corner. TV Mode's remote drives the newest window; when that one stops, it drives the other. |
 | 16 | Loopback: `tools\two_devices.ps1`, then `tools\two_devices.ps1 -Free` (after `build.py` and the test media). | `PASS two devices (Pro)` and `PASS two devices (free edition: takeover)`. |
+
+## Status over HTTP, keep-awake and full=1 (with two devices)
+
+Add `[status] http=1` (and for row 5 `[window] full=1`) to `%LOCALAPPDATA%\AirGlass\config.ini` and restart AirGlass.
+From another PC or phone on the LAN, open `http://<pc>:7000/status` ([details](status-http.md)).
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Nothing mirroring. | `"mirror":null,"sessions":[]`. |
+| 2 | Mirror from the iPhone, then (Pro) from the iPad. | `mirror` is the iPad (same fields as before: `session`, `device`, `model`, `width`, `height`, `mode`); `sessions` lists both with `window` 1/2, and `recent:true` on the iPad. |
+| 3 | `GET /status?since=<seq>` in one tab, then stop the iPad. | The request answers at once with `mirror` = the iPhone and one entry in `sessions`. |
+| 4 | With both mirroring, set the PC's screen to turn off after 1 minute; wait 2 minutes. Stop one device and wait again. Stop both. | The display stays on while either device mirrors (log: `display: kept awake for mirroring`); it may sleep only after both stopped (`display: may sleep again`). |
+| 5 | `[window] full=1`, Pro: mirror from two devices. | Both windows open full screen; <kbd>Esc</kbd> floats each one on its own. |

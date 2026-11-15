@@ -6,6 +6,8 @@
 #include "media/audio_output.h"
 #include "media/frame_sink.h"
 
+class StatusBoard;
+
 // Snapshot of an audio-only (music) AirPlay session for TV Mode's Now Playing player.
 struct NowPlaying {
     uint64_t session = 0;
@@ -94,6 +96,9 @@ public:
     // Loopback tests only: every code is this one, so the test sender can type it.
     void SetTestPin(const std::string& pin);
     static constexpr double kPinCodeSeconds = 120;  // a code on the PC is good for this long
+    // Serve GET /status (+ /status/artwork) over HTTP on the AirPlay port from this board; null = off.
+    // Set before Start().
+    void SetStatus(StatusBoard* board) { status_ = board; }
 
 private:
     class Connection;
@@ -149,4 +154,5 @@ private:
     double pinIssued_ = 0;
     int pinWrong_ = 0, pinLockSeconds_ = 0;
     double pinLockedUntil_ = 0;
+    StatusBoard* status_ = nullptr;
 };
