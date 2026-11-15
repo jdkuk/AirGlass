@@ -131,6 +131,16 @@ constexpr D2D1_COLOR_F kInkColors[4] = {
     {1.00f, 0.23f, 0.19f, 1}, {1.00f, 0.80f, 0.00f, 1}, {0.20f, 0.78f, 0.35f, 1}, {0.04f, 0.52f, 1.00f, 1}};
 const wchar_t* const kToolNames[3] = {L"Pen", L"Arrow", L"Highlighter"};
 
+// Uniform scale s, then a move by (dx, dy).
+D2D1_MATRIX_3X2_F Matrix(float s, float dx, float dy) {
+    D2D1_MATRIX_3X2_F m{};
+    m._11 = s;
+    m._22 = s;
+    m._31 = dx;
+    m._32 = dy;
+    return m;
+}
+
 // Draw-mode cursor: a dot in the current colour, ringed white and dark so it shows on any picture.
 HCURSOR MakeDotCursor(const D2D1_COLOR_F& c, int size) {
     std::vector<uint32_t> px(size_t(size) * size);
@@ -865,8 +875,8 @@ bool GlassWindow::RenderInkLocked(const Layout& L, const float zoom[4], const Sh
     // Picture units -> window px: k px per unit (the picture is 1 unit high, aspect units wide).
     float aspect = L.video.W() / L.video.H();
     float k = L.video.H() / std::max(zoom[3] - zoom[1], 1e-4f);
-    D2D1_MATRIX_3X2_F toWindow{k, 0, 0, k, L.video.x0 - zoom[0] * aspect * k, L.video.y0 - zoom[1] * k};
-    D2D1_MATRIX_3X2_F identity{1, 0, 0, 1, 0, 0};
+    D2D1_MATRIX_3X2_F toWindow = Matrix(k, L.video.x0 - zoom[0] * aspect * k, L.video.y0 - zoom[1] * k);
+    D2D1_MATRIX_3X2_F identity = Matrix(1, 0, 0);
     inkRt_->BeginDraw();
     inkRt_->SetTransform(identity);
     inkRt_->Clear(D2D1_COLOR_F{0, 0, 0, 0});
