@@ -66,6 +66,12 @@ All notable changes to AirGlass are documented here. The format is based on
 - A mirroring window now gets the keyboard focus when it opens, so its keys (S, R, D, Z, O…) work without a click.
   Windows refuses the focus to a background program, so the keys used to go to the desktop. Not under TV Mode, not
   when a new device takes over a window already on screen, and not away from the other mirroring window.
+- Pro: a recording started while the phone's screen was still is now as long as it ran. A device sends no frames
+  while nothing moves, and the frames AirGlass keeps from before the click (to start on a keyframe) were timed by
+  an MP4 edit list that some players ignore: a 7.5 s recording played as two minutes. Those frames are now packed
+  into the file's first instant, each picture lasts until the next one, and the last one runs to the moment you
+  stop, so a still screen gives a recording of the right length showing its picture. The sound needs no edit list
+  either. The log's "finished" line and the tray's timer count the time since the click.
 - A mirroring session now keeps the display awake, and wakes a display that had idled off when it starts
   (`[display] keepawake` / `wake` turn this off). With two devices, the display stays awake until both have stopped.
 

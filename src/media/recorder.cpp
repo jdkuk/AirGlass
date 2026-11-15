@@ -86,11 +86,11 @@ void Recorder::Feed(const uint8_t* data, size_t n) {
                 gopValid_ = false;
             } else {
                 gop_.push_back(p);
-                if (fmt_) WriteLocked(gop_.back());
+                if (fmt_) WriteLocked(gop_.back(), (p.us - t0_) * 9 / 100);
             }
         } else if (fmt_) {
             p.data.assign(data, data + n);
-            WriteLocked(p);
+            WriteLocked(p, (p.us - t0_) * 9 / 100);
         }
     }
     if (!stoppedPath.empty() && onAutoStop) onAutoStop(stoppedPath, "the device rotated");
@@ -168,7 +168,7 @@ bool Recorder::OpenLocked(std::string* error) {
     std::memcpy(par->extradata, config_.data(), config_.size());
     par->extradata_size = int(config_.size());
     if (audioStreams_ > 0 && audioRate_ > 0) OpenAudioLocked();
-    fmt_->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;  // pre-click frames stay negative -> edit list
+    fmt_->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;  // nothing is negative; never shift a track
     if ((rc = avio_open(&fmt_->pb, file.c_str(), AVIO_FLAG_WRITE)) < 0) {
         *error = "can't create the file: " + AvError(rc);
         CloseAudioLocked();
@@ -178,7 +178,7 @@ bool Recorder::OpenLocked(std::string* error) {
     }
     AVDictionary* opts = nullptr;
     av_dict_set(&opts, "movflags", "+faststart", 0);
-    av_dict_set(&opts, "use_editlist", "1", 0);
+    av_dict_set(&opts, "use_editlist", "0", 0);  // both tracks start at zero
     rc = avformat_write_header(fmt_, &opts);
     av_dict_free(&opts);
     if (rc < 0) {
@@ -191,14 +191,17 @@ bool Recorder::OpenLocked(std::string* error) {
         return false;
     }
     fileConfig_ = config_;
-    t0_ = NowUs();  // the click: everything cached before it is timed below zero
+    t0_ = NowUs();  // the click
     lastPts_ = INT64_MIN;
-    lastUs_ = t0_;
-    aSamples_ = aEncoded_ = 0;
+    // The encoder's first output is its priming (initial_padding samples, decoded but not ours): numbering the
+    // input from there puts the first packet at zero, so the sound needs no edit list either. aSamples_ is
+    // then the track's position in time, as before.
+    aSamples_ = aEncoded_ = aenc_ ? aenc_->initial_padding : 0;
     aDrift_ = 0;
     aWarned_ = false;
     apending_.clear();
-    for (const Packet& p : gop_) WriteLocked(p);
+    int64_t tick = 0;  // the cache: the decoder runs through it in the first instant and shows its last picture
+    for (const Packet& p : gop_) WriteLocked(p, tick++);
     LOGI("record: started %dx%d%s -> %s (%zu cached packets)", w_, h_,
          aenc_ ? (", sound " + std::to_string(trackRate_) + " Hz AAC").c_str() : ", no sound in this session",
          file.c_str(), gop_.size());
@@ -298,25 +301,32 @@ void Recorder::EncodeAudioLocked(bool flush) {
     av_packet_free(&pkt);
 }
 
-void Recorder::WriteLocked(const Packet& p) {
-    int64_t pts = (p.us - t0_) * 9 / 100;  // microseconds -> 90 kHz
+void Recorder::WriteLocked(const Packet& p, int64_t pts) {
     if (lastPts_ != INT64_MIN && pts <= lastPts_) pts = lastPts_ + 1;
     lastPts_ = pts;
-    if (p.us > lastUs_) lastUs_ = p.us;
     AVPacket* pkt = av_packet_alloc();
-    if (av_new_packet(pkt, int(p.data.size())) == 0) {
-        std::memcpy(pkt->data, p.data.data(), p.data.size());
-        pkt->pts = pkt->dts = pts;
-        pkt->stream_index = st_->index;
-        if (p.key) pkt->flags |= AV_PKT_FLAG_KEY;
-        WritePacketLocked(pkt);
+    if (!pkt || av_new_packet(pkt, int(p.data.size())) < 0) {
+        av_packet_free(&pkt);
+        return;
     }
-    av_packet_free(&pkt);
+    std::memcpy(pkt->data, p.data.data(), p.data.size());
+    pkt->pts = pkt->dts = pts;
+    pkt->stream_index = st_->index;
+    if (p.key) pkt->flags |= AV_PKT_FLAG_KEY;
+    WriteHeldLocked(pts);  // the previous picture lasts until this one
+    held_ = pkt;
     // No sound arriving (silence on the sender, or it starts late): keep the track up with the picture.
-    if (aenc_ && fmt_) {
+    if (aenc_ && fmt_ && p.us > t0_) {
         int64_t behind = (p.us - t0_) * trackRate_ / 1000000 - aSamples_;
         if (behind > int64_t(kSilenceAfter * trackRate_)) PadAudioLocked(behind - int64_t(kSilenceLead * trackRate_));
     }
+}
+
+void Recorder::WriteHeldLocked(int64_t until) {
+    if (!held_) return;
+    held_->duration = std::max<int64_t>(until - held_->pts, 1);
+    WritePacketLocked(held_);
+    av_packet_free(&held_);
 }
 
 void Recorder::WritePacketLocked(AVPacket* pkt) {
@@ -327,8 +337,11 @@ void Recorder::WritePacketLocked(AVPacket* pkt) {
 
 std::wstring Recorder::CloseLocked() {
     if (!fmt_) return L"";
+    // The recording runs to now, whether or not the screen changed since the last picture.
+    int64_t stopUs = NowUs();
+    WriteHeldLocked(std::max((stopUs - t0_) * 9 / 100, lastPts_ + 1));
     if (aenc_) {
-        int64_t end = (lastUs_ - t0_) * trackRate_ / 1000000;  // sound to the end of the picture
+        int64_t end = (stopUs - t0_) * trackRate_ / 1000000;  // sound to the end of the picture
         if (end > aSamples_) PadAudioLocked(end - aSamples_);
         EncodeAudioLocked(true);
         CloseAudioLocked();
@@ -339,7 +352,7 @@ std::wstring Recorder::CloseLocked() {
     fmt_ = nullptr;
     st_ = nullptr;
     fileConfig_.clear();
-    LOGI("record: finished (%.1f s)", double(lastUs_ - t0_) / 1e6);
+    LOGI("record: finished (%.1f s)", double(stopUs - t0_) / 1e6);
     return path_;
 }
 
@@ -360,5 +373,5 @@ bool Recorder::HasSound() {
 
 double Recorder::Seconds() {
     std::lock_guard<std::mutex> lk(mu_);
-    return fmt_ ? double(lastUs_ - t0_) / 1e6 : 0.0;
+    return fmt_ ? double(NowUs() - t0_) / 1e6 : 0.0;
 }

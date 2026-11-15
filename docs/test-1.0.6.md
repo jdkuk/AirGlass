@@ -125,6 +125,8 @@ Use an iPhone that has never connected to this PC (or tray → **Forget paired d
 | 7 | If you have a sender that sets up no audio stream (its session has no `audio: … mirroring` line in the log), record from it. | Balloon "…(it sends no sound)…"; the MP4 has a picture track only, as in 1.0.5. |
 | 8 | Check the file in File Explorer → Properties → Details, or `ffprobe`. | Video H.264 at the sender's size; audio AAC stereo 160 kb/s. |
 | 9 | Free edition: press <kbd>R</kbd>. | The AirGlass Pro dialog, as before. |
+| 10 | Leave the phone on a still screen (home screen, nothing moving) for 2 minutes, press <kbd>R</kbd>, wait about 8 s without touching the phone, press <kbd>R</kbd>. | The MP4 is about 8 s long (not minutes) in Films & TV, VLC and a browser tab, and shows the home screen from the first instant to the end. Log: `record: finished (8.x s)`; the tray's "Stop recording (0:0x)" counted up while nothing moved. |
+| 11 | Record a still screen for 5 s, then scroll for 5 s, then stop. | 10 s: the still picture, then the scrolling, at the moments they happened. |
 
 ## AirGlass Pro dialog
 

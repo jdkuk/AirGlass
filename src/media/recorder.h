@@ -3,8 +3,12 @@
 // The sender's H.264 stream is copied into the file (FFmpeg's MP4 muxer, no re-encode), so a
 // recording costs almost no CPU and keeps the original quality. A recording has to begin on a
 // keyframe, and senders send them rarely, so the recorder always keeps the packets since the last
-// keyframe: Start() writes those first, timed before zero, and an MP4 edit list starts playback at
-// the click.
+// keyframe: Start() writes those first, packed into the file's first instant (one 90 kHz tick each),
+// so playback starts at the click showing the picture on screen then. No edit lists, no negative
+// timestamps: some players ignore those and played the whole cache (minutes on a still screen).
+// A device sends no frames while its screen is still, so each picture lasts until the next one: the
+// newest packet is held back until the next arrives, and Stop() gives it a duration up to the moment
+// of the stop, so a recording is as long as the wall-clock time it ran.
 // Sound: when the session has a mirroring audio stream, its decoded PCM is encoded to AAC-LC (FFmpeg's
 // built-in "aac" encoder) as a second track. Both tracks are timed by the same clock, the arrival time on
 // this PC, so they stay in sync; gaps (sound that starts late, pauses, lost packets) become silence.
@@ -40,7 +44,7 @@ public:
     std::wstring Stop();
     bool Active();
     bool HasSound();   // the recording in progress has a sound track
-    double Seconds();  // length so far
+    double Seconds();  // length so far (wall-clock time since Start)
 
     // Called (from the mirror thread) when a recording ends by itself, e.g. the device rotated.
     std::function<void(const std::wstring& path, const std::string& reason)> onAutoStop;
@@ -53,7 +57,8 @@ private:
     };
     bool OpenLocked(std::string* error);
     bool OpenAudioLocked();
-    void WriteLocked(const Packet& p);
+    void WriteLocked(const Packet& p, int64_t pts);  // pts in 90 kHz ticks
+    void WriteHeldLocked(int64_t until);             // the held packet, lasting until `until`
     void WritePacketLocked(AVPacket* pkt);
     void PadAudioLocked(int64_t samples);
     void EncodeAudioLocked(bool flush);
@@ -70,7 +75,8 @@ private:
     AVStream* st_ = nullptr;
     std::wstring path_;
     std::vector<uint8_t> fileConfig_;  // SPS/PPS the open file was started with
-    int64_t t0_ = -1, lastPts_ = -1, lastUs_ = 0;
+    int64_t t0_ = -1, lastPts_ = -1;
+    AVPacket* held_ = nullptr;  // the newest video packet, written once its duration is known
     // Sound
     int audioStreams_ = 0, audioRate_ = 0;  // running mirroring audio streams and their sample rate
     AVStream* ast_ = nullptr;

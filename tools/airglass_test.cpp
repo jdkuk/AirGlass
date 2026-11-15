@@ -10,7 +10,8 @@
 //   airglass_test resampler                 resampler quality vs. the old linear interpolation
 //   airglass_test srp                       SRP-6a for PIN pairing: RFC 5054 vectors and the AirPlay variant
 //   airglass_test pin <code> [--port P]     PIN pairing end to end (receiver started with AIRGLASS_TEST_PIN=<code>)
-//   airglass_test record <h264.mp4> <dir>   Pro recorder: picture + sound in sync, sound starting late, no sound
+//   airglass_test record <h264.mp4> <dir>   Pro recorder: picture + sound in sync, sound starting late, no sound,
+//                                           a still screen (no frames after the click)
 //   airglass_test resolve <instance> <type> one-shot mDNS SRV lookup
 //   airglass_test license activate|validate <key> <pc name|instance id>
 //                                           Lemon Squeezy license round trip (AirGlass Pro)
@@ -1443,7 +1444,8 @@ static int CmdResampler() {
 struct RecordResult {
     int streams = 0;
     bool h264 = false, aac = false;
-    double videoEnd = 0, audioEnd = 0, toneAt = -1;  // track ends and the first loud sample (s)
+    double videoStart = 1e9, videoEnd = 0, audioEnd = 0, toneAt = -1;  // track ends and the first loud sample (s)
+    double duration = 0;                                                // the file's own length (s)
 };
 
 static bool ReadBack(const std::string& path, RecordResult& r) {
@@ -1451,6 +1453,7 @@ static bool ReadBack(const std::string& path, RecordResult& r) {
     if (avformat_open_input(&f, path.c_str(), nullptr, nullptr) < 0) return false;
     avformat_find_stream_info(f, nullptr);
     r.streams = int(f->nb_streams);
+    r.duration = f->duration > 0 ? double(f->duration) / AV_TIME_BASE : 0;
     int vIdx = -1, aIdx = -1;
     AVCodecContext* dec = nullptr;
     for (unsigned i = 0; i < f->nb_streams; ++i) {
@@ -1473,7 +1476,10 @@ static bool ReadBack(const std::string& path, RecordResult& r) {
     while (av_read_frame(f, pkt) >= 0) {
         double tb = av_q2d(f->streams[pkt->stream_index]->time_base);
         double end = double(pkt->pts + pkt->duration) * tb;
-        if (pkt->stream_index == vIdx) r.videoEnd = std::max(r.videoEnd, end);
+        if (pkt->stream_index == vIdx) {
+            r.videoEnd = std::max(r.videoEnd, end);
+            r.videoStart = std::min(r.videoStart, double(pkt->pts) * tb);
+        }
         if (pkt->stream_index == aIdx) {
             r.audioEnd = std::max(r.audioEnd, end);
             if (dec && r.toneAt < 0 && avcodec_send_packet(dec, pkt) >= 0) {
@@ -1494,8 +1500,10 @@ static bool ReadBack(const std::string& path, RecordResult& r) {
 }
 
 // One recording: video from t=0, the recording starts at about `startAt` (*startedAt: exactly), sound (if any)
-// from `toneFrom` seconds.
-static bool RecordOnce(Media& m, const std::string& out, double startAt, double toneFrom, bool sound, double* startedAt) {
+// from `toneFrom` seconds. stillFor >= 0: no more frames after the click (a still screen), and the recording stops
+// that long after it; *ranFor is the wall-clock time from Start to Stop.
+static bool RecordOnce(Media& m, const std::string& out, double startAt, double toneFrom, bool sound, double* startedAt,
+                       double stillFor = -1, double* ranFor = nullptr) {
     // avcC -> Annex-B SPS/PPS
     const std::vector<uint8_t>& a = m.avcc;
     std::vector<uint8_t> config;
@@ -1562,11 +1570,16 @@ static bool RecordOnce(Media& m, const std::string& out, double startAt, double 
             }
         }
         av_packet_unref(pkt);
+        if (started && stillFor >= 0) break;
     }
     av_packet_free(&pkt);
+    if (started && stillFor > 0) Sleep(DWORD(stillFor * 1000.0));
+    double stopAt = NowSeconds() - t0;
+    bool ok = started && !rec.Stop().empty();
+    if (ranFor) *ranFor = stopAt - *startedAt;
     done = true;
     if (audio.joinable()) audio.join();
-    return started && !rec.Stop().empty();
+    return ok;
 }
 
 static int CmdRecord(const std::string& in, const std::string& dir) {
@@ -1588,6 +1601,23 @@ static int CmdRecord(const std::string& in, const std::string& dir) {
     if (!RecordOnce(m, noSound, startAt, 0, false, &started) || !ReadBack(noSound, r2)) return Fail("record without sound");
     printf("[record] without sound: %d stream, picture ends %.2f s\n", r2.streams, r2.videoEnd);
     if (r2.streams != 1 || !r2.h264) return Fail("expected only an H.264 track");
+    // A still screen: the device sends nothing after the click. The frames cached since the last keyframe must not
+    // make the file longer (nor start it before the click), and the recording must last as long as it ran, with
+    // its sound in sync.
+    std::string still = dir + "\\rec_still.mp4";
+    RecordResult r3;
+    double ran = 0;
+    const double stillAt = 2.5, stillTone = stillAt + 0.6;
+    if (!RecordOnce(m, still, stillAt, stillTone, true, &started, 2.0, &ran) || !ReadBack(still, r3))
+        return Fail("record a still screen");
+    expected = stillTone - started - 480.0 / 44100.0;
+    printf("[record] still screen: ran %.2f s; picture %.3f..%.2f s, sound ends %.2f s, file %.2f s, tone at %.3f s "
+           "(expected %.3f)\n", ran, r3.videoStart, r3.videoEnd, r3.audioEnd, r3.duration, r3.toneAt, expected);
+    if (r3.videoStart < 0 || r3.videoStart > 0.01) return Fail("the picture doesn't start at the click");
+    if (std::fabs(r3.videoEnd - ran) > 0.15) return Fail("a still screen gave the wrong length");
+    if (r3.duration > ran + 0.3) return Fail("the file is longer than the recording");
+    if (std::fabs(r3.audioEnd - r3.videoEnd) > 0.3) return Fail("sound and picture end apart (still screen)");
+    if (r3.toneAt < 0 || std::fabs(r3.toneAt - expected) > 0.1) return Fail("sound out of sync (still screen)");
     printf("PASS record\n");
     return 0;
 }
