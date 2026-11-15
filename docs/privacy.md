@@ -7,6 +7,7 @@ AirGlass is designed to keep everything on your PC and your local network.
 | Screen Mirroring video and audio | Your local network only (device → PC). Never stored, never uploaded. |
 | AirPlay music, track info, artwork | Local network only. The current artwork is cached in `%LOCALAPPDATA%\AirGlass` and replaced by the next track. |
 | Your device's name and model | Shown in the window and written to the local log file. |
+| Allowed and blocked devices (Pro) | Their AirPlay device ids and names, in `config.ini` on this PC only. |
 | Receiver identity (device ID, Ed25519 key) | Generated on first run and stored in `config.ini`. Never leaves the PC except in the AirPlay handshake on your network. |
 | **Pro license key** | Sent to **Lemon Squeezy** (`api.lemonsqueezy.com`) when you activate it, and checked once per start, together with the label `AirGlass on <PC name>`. |
 

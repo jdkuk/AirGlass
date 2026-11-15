@@ -66,3 +66,23 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 | 14 | With strokes on, rotate the phone; or end the session and mirror again. | The strokes are gone and draw mode is off. |
 | 15 | Tray menu during mirroring; right-click in the window. | "Draw on screen  D" in both, ticked while drawing; the window menu also has "Clear drawing  C" when there are strokes. |
 | 16 | Free edition: press <kbd>D</kbd>, or tray → "Draw on screen (Pro)…". | The AirGlass Pro dialog: "Drawing on screen is part of AirGlass Pro…". |
+
+## Allow-list (Pro, tray → Ask before new devices connect)
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Tray menu. | "Ask before new devices connect", unticked. No "Forget…" item yet. |
+| 2 | Choose it. | Ticked; balloon "AirGlass asks first". `askNewDevices=1` under `[security]` in `config.ini`. |
+| 3 | Start mirroring from the iPhone. | Within a second the PC shows "Allow “<iPhone name>” to use AirGlass?" on top of everything, with a countdown from 30 s. The iPhone waits. |
+| 4 | Click **Allow once**. | Mirroring starts. Stop it and mirror again: asked again. |
+| 5 | Mirror again, click **Always allow**. | Mirroring starts. `config.ini` has `[devices]` with `<id>=allow <iPhone name>`. Stop and mirror again: no prompt. Play music to the PC (AirPlay audio): no prompt. |
+| 6 | From a second device (iPad or Mac), mirror and click **Block**. | The device shows an error ("Unable to connect" or similar) instead of hanging. Try again: refused straight away, no prompt. `config.ini` has `<id>=block …`. |
+| 7 | From the second device, after tray → **Forget allowed and blocked devices**, mirror and don't answer. | The countdown runs out; the prompt closes; the device shows an error within about 30 s. |
+| 8 | Mirror from it again and close the prompt with ✕ or <kbd>Esc</kbd>. Then again and press <kbd>Enter</kbd>. | ✕/Esc turns it away this time (not remembered). Enter does nothing. |
+| 9 | Mirror from it and cancel on the device while the prompt is open. | The prompt closes by itself within a second. |
+| 10 | Mirror from the iPhone (always allowed) while a prompt for the iPad is open. | The iPhone connects; the iPad's prompt stays until answered. |
+| 11 | Mirror from the iPhone full screen, then start mirroring from a new device. | The prompt appears over the full-screen picture; the iPhone keeps mirroring until you allow the new device. |
+| 12 | Tray → untick "Ask before new devices connect". | New devices connect without a prompt; the list is kept. |
+| 13 | As admin, create `%ProgramData%\AirGlass\airglass.ini` with `[security]` / `askNewDevices=1`, restart AirGlass. | The tray item is ticked and greyed, "(set by your organisation)". New devices are asked about, also in the free edition. Delete the file and restart: back to the user's choice. |
+| 14 | Free edition (trial over) with it off: choose "Ask before new devices connect (Pro)…". | The AirGlass Pro dialog: "Asking before new devices connect is part of AirGlass Pro…". If it was turned on during the trial, it stays on and can be turned off. |
+| 15 | Loopback test (`AirGlass.exe --loopback` + `airglass_test stream`) with it on. | No prompt; the test passes. |

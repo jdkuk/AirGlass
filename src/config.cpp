@@ -114,6 +114,25 @@ void Config::Load() {
     proSessions = ReadInt(path, L"license", L"sessions", 0);
     trialStarted = _wtoi64(Read(path, L"license", L"trial").c_str());
     trialEndShown = ReadInt(path, L"license", L"trialendshown", 0) != 0;
+    askNewDevices = ReadInt(path, L"security", L"askNewDevices", 0) != 0;
+    if (!machine.empty() && ReadInt(machine, L"security", L"askNewDevices", 0) != 0) {
+        askNewDevices = true;
+        askManaged = true;
+    }
+    devices.clear();
+    std::vector<wchar_t> sec(32768);
+    DWORD n = GetPrivateProfileSectionW(L"devices", sec.data(), DWORD(sec.size()), path.c_str());
+    for (const wchar_t* p = sec.data(); p < sec.data() + n && *p; p += wcslen(p) + 1) {
+        std::string line = WideToUtf8(p);
+        size_t eq = line.find('=');
+        if (eq == std::string::npos || eq == 0) continue;
+        std::string value = line.substr(eq + 1), verb = value.substr(0, value.find(' '));
+        if (verb != "allow" && verb != "block") continue;
+        KnownDevice d;
+        d.allowed = verb == "allow";
+        if (value.size() > verb.size()) d.name = value.substr(verb.size() + 1);
+        devices[line.substr(0, eq)] = d;
+    }
     if (dirty) Save();
 }
 
@@ -140,4 +159,19 @@ void Config::Save() const {
     Write(path, L"license", L"sessions", std::to_wstring(proSessions));
     Write(path, L"license", L"trial", std::to_wstring(trialStarted));
     Write(path, L"license", L"trialendshown", trialEndShown ? L"1" : L"0");
+    if (!askManaged) Write(path, L"security", L"askNewDevices", askNewDevices ? L"1" : L"0");
+    // The whole [devices] section is rewritten: "key=value" strings, each 0-terminated, then one more 0.
+    WritePrivateProfileStringW(L"devices", nullptr, nullptr, path.c_str());
+    std::wstring sec;
+    for (const auto& [id, d] : devices) {
+        std::wstring name = Utf8ToWide(d.name);
+        for (wchar_t& c : name)
+            if (c < 0x20) c = L' ';
+        sec += Utf8ToWide(id) + (d.allowed ? L"=allow" : L"=block") + (name.empty() ? L"" : L" " + name);
+        sec.push_back(L'\0');
+    }
+    if (!sec.empty()) {
+        sec.push_back(L'\0');
+        WritePrivateProfileSectionW(L"devices", sec.c_str(), path.c_str());
+    }
 }

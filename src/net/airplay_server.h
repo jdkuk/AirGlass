@@ -45,6 +45,11 @@ public:
         std::function<void(uint64_t sid, int w, int h)> videoSize;
         // Anything about the music session changed; read it with GetNowPlaying(). Any thread.
         std::function<void()> nowPlayingChanged;
+        // Allow-list: asked on the connection's thread when a sender starts a mirroring or audio session, before
+        // any keys or streams are set up; false turns the sender away (RTSP 403, connection closed). It may block
+        // while the user decides (the caller times out); `gone` says whether the sender hung up meanwhile.
+        std::function<bool(const std::string& senderId, const std::string& name, const std::function<bool()>& gone)>
+            admit;
     };
 
     AirPlayServer();

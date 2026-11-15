@@ -23,6 +23,11 @@ All notable changes to AirGlass are documented here. The format is based on
   or blue (<kbd>1</kbd>–<kbd>4</kbd>). <kbd>Backspace</kbd> undoes the last stroke and <kbd>C</kbd> clears them all.
   Strokes stay on the picture when the window moves, resizes or zooms, and clear on a new session or a rotation.
   Screenshots and OBS mode show them; recordings copy the sender's stream, so they don't.
+- Pro: allow-list. Tray → **Ask before new devices connect**: when a device AirGlass doesn't know starts mirroring
+  or audio, the PC asks "Allow … to use AirGlass?" with Allow once, Always allow or Block. No answer within 30 s
+  turns it away; a turned-away device gets a clean refusal and shows an error. Answers are kept under `[devices]` in
+  `config.ini`; tray → **Forget allowed and blocked devices** clears them. IT departments can turn it on for the
+  whole machine with `askNewDevices=1` under `[security]` in `%ProgramData%\AirGlass\airglass.ini`.
 
 ## [1.0.5] - 2026-11-15
 

@@ -100,6 +100,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | OBS mode: a chroma-key green window for OBS Window Capture (<kbd>O</kbd>) | | ✅ |
 | Region zoom: drag a rectangle to zoom into part of the picture (<kbd>Z</kbd>) | | ✅ |
 | Draw on screen: pen, arrow and highlighter on the mirrored picture (<kbd>D</kbd>) | | ✅ |
+| Allow-list: ask on the PC before a new device connects (tray → *Ask before new devices connect*) | | ✅ |
 | Use on up to 3 PCs | | ✅ |
 
 **Every install starts with a free 7-day Pro trial** from your first mirroring session, so you can try the window,
@@ -142,7 +143,8 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 
 Rotating the device morphs the window between portrait and landscape. Audio plays through the default Windows output,
 and the device's volume buttons control it. Tray icon (right-click): *Rename this PC…*, *OBS mode*, *Zoom into a region*,
-*Draw on screen*, *Start with Windows*, *Open log folder*, *Quit*.
+*Draw on screen*, *Ask before new devices connect*,
+*Forget allowed and blocked devices*, *Start with Windows*, *Open log folder*, *Quit*.
 
 </details>
 

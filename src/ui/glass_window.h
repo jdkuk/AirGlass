@@ -70,8 +70,11 @@ public:
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
     // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
-    // kProObs (OBS mode), kProZoom (region zoom), kProDraw (drawing on the picture).
-    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4, kProDraw = 5 };
+    // kProObs (OBS mode), kProZoom (region zoom), kProDraw (drawing on the picture); kProAllowList (asking before
+    // new devices connect) comes from the tray menu.
+    enum ProFeature {
+        kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4, kProDraw = 5, kProAllowList = 6
+    };
     std::function<void(int feature)> onUpgradeRequested;
 
     // Pro: screenshot of the glass window (PNG with transparency, saved by the caller's path) and the

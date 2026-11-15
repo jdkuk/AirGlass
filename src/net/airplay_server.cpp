@@ -177,6 +177,8 @@ private:
     void Teardown(const Request& req, Response& resp);
 
     void DeriveKey(const char* salt, uint8_t out[16]) const;
+    std::string SenderId() const;
+    bool SenderGone();
     void StopMirror();
     void StopAudio();
     void StopStreams();
@@ -204,6 +206,7 @@ private:
     bool keysReady_ = false;
     uint8_t aesKey_[16]{}, aesIv_[16]{};
     std::string devName_, devModel_, devId_;
+    bool admitted_ = false;  // the allow-list said yes for this connection
 
     std::unique_ptr<NtpClient> ntp_;
     std::unique_ptr<MirrorStream> mirror_;
@@ -473,6 +476,29 @@ void AirPlayServer::Connection::DeriveKey(const char* salt, uint8_t out[16]) con
     std::memcpy(out, d, 16);
 }
 
+// The id the allow-list keeps for this sender. It is the "deviceID" the sender puts in its first SETUP: the
+// AirPlay device id it also advertises over Bonjour (MAC-style, e.g. "AA:BB:CC:DD:EE:FF"), the same on every
+// session and after restarts, and what other receivers' allow/block lists use (UxPlay's -allow/-block). The peer
+// address is no good (DHCP changes it). With "Private Wi-Fi Address" an iPhone's id can differ per network, which
+// only means it is asked once more on another network. Senders without a deviceID fall back to the Ed25519
+// public key they paired with (pair-verify), and senders with neither to their address.
+std::string AirPlayServer::Connection::SenderId() const {
+    std::string id;
+    for (char c : devId_)
+        if (isalnum(static_cast<unsigned char>(c)) || c == ':' || c == '-') id += char(toupper(static_cast<unsigned char>(c)));
+    if (!id.empty()) return id;
+    if (pair_ == PairState::Finished) return "PK:" + HexEncode(edTheirs_, 32, true);
+    return "IP:" + net::AddrToString(peer_);  // last resort: no id and no pairing
+}
+
+// True once the sender has closed the connection (or the receiver is stopping), while a request is pending.
+bool AirPlayServer::Connection::SenderGone() {
+    if (srv_->stop_ || kicked_) return true;
+    if (net::WaitReadable(sock_, 0) <= 0) return false;
+    char b;
+    return recv(sock_, &b, 1, MSG_PEEK) <= 0;
+}
+
 void AirPlayServer::Connection::PairVerify(const Request& req, Response& resp) {
     if (pair_ != PairState::Setup && pair_ != PairState::Handshake) {
         LOGW("rtsp[%llu]: pair-verify before pair-setup", (unsigned long long)id_);
@@ -577,6 +603,20 @@ void AirPlayServer::Connection::Setup(const Request& req, Response& resp) {
         const std::string* ua = req.Header("User-Agent");
         LOGI("rtsp[%llu]: session from \"%s\" (%s %s, %s)", (unsigned long long)id_, devName_.c_str(), devModel_.c_str(),
              str("osVersion").c_str(), ua ? ua->c_str() : "?");
+        // Allow-list: decided before any keys, timing or streams exist, so a sender that is turned away gets a
+        // clean refusal (and shows an error) instead of a half-built session.
+        if (!admitted_ && srv_->ev_.admit) {
+            std::string id = SenderId();
+            if (!srv_->ev_.admit(id, devName_, [this] { return SenderGone(); })) {
+                LOGI("rtsp[%llu]: \"%s\" (%s) is not allowed here; turning it away", (unsigned long long)id_,
+                     devName_.c_str(), id.c_str());
+                resp.code = 403;
+                resp.reason = "Forbidden";
+                resp.closeAfter = true;
+                return;
+            }
+            admitted_ = true;
+        }
 
         if (eiv->AsData().size() >= 16) std::memcpy(aesIv_, eiv->AsData().data(), 16);
         uint8_t key[16] = {};

@@ -4,6 +4,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 
@@ -16,6 +17,7 @@
 #include "net/bplist.h"
 #include "net/mdns.h"
 #include "net/netutil.h"
+#include "ui/allow.h"
 #include "ui/glass_window.h"
 #include "ui/icon.h"
 #include "ui/rename.h"
@@ -37,13 +39,15 @@ constexpr UINT kMsgLicenseRevoked = WM_APP + 11;
 constexpr UINT kMsgTrialEnded = WM_APP + 12;
 constexpr UINT kMsgRecordStopped = WM_APP + 13;  // lParam: std::wstring* (finished file), recorder thread
 constexpr UINT kMsgRenamed = WM_APP + 14;        // lParam: RenameResult* (checked on the network)
+constexpr UINT kMsgAskDevice = WM_APP + 15;      // lParam: std::shared_ptr<AdmitRequest>* (connection thread)
 constexpr UINT_PTR kTimerNowPlaying = 1;
 constexpr UINT_PTR kTimerTvGrace = 2;
 constexpr UINT_PTR kTimerNpDebounce = 3;
 constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer has registered our tray icon
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
-constexpr UINT kMenuObs = 110, kMenuZoom = 111, kMenuDraw = 112;
+constexpr UINT kMenuObs = 110, kMenuZoom = 111, kMenuDraw = 112, kMenuAskDevices = 113, kMenuForgetDevices = 114;
+constexpr int kAskSeconds = 30;  // allow-list: a device nobody answers for is turned away
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 struct StartEvent {
@@ -59,6 +63,14 @@ struct MediaResult {
 };
 struct RenameResult {
     std::string wanted, name;  // name = wanted, or wanted + " PC" if another device already uses it
+};
+// Allow-list: a connection waiting (on its own thread) for the user's answer about a new device.
+struct AdmitRequest {
+    std::string id, name;
+    double deadline = 0;  // NowSeconds
+    std::mutex mu;
+    std::condition_variable cv;
+    int answer = -1;  // ui::AllowAnswer once settled (guarded by mu)
 };
 
 const char* kCornerNames[4] = {"br", "bl", "tr", "tl"};
@@ -200,6 +212,9 @@ private:
     // "Rename this PC…" (UI thread): the dialog, then a network check off the UI thread, then ApplyName.
     void RenameReceiver();
     void ApplyName(const std::string& wanted, const std::string& name);
+    // Allow-list. Admit runs on a connection thread; AskNextDevice shows the queued prompts (UI thread).
+    bool Admit(const std::string& id, const std::string& name, const std::function<bool()>& gone);
+    void AskNextDevice();
 
     // TV Mode control pipe (UI thread).
     void OnPipeCommand(const std::string& line);
@@ -236,6 +251,12 @@ private:
     bool renaming_ = false;  // the dialog is open or the network check is running
     bool loopback_ = false, upgradeOpen_ = false;
     int promoteTries_ = 0;
+    // Allow-list: askOn_ mirrors cfg_.askNewDevices for the connection threads; devMu_ guards cfg_.devices,
+    // which only the UI thread changes.
+    std::atomic<bool> askOn_{false};
+    std::mutex devMu_;
+    std::deque<std::shared_ptr<AdmitRequest>> askQueue_;
+    bool asking_ = false;  // a prompt is open
 
     // Mirroring session as reported to TV Mode.
     uint64_t curSid_ = 0;
@@ -371,6 +392,82 @@ void App::ApplyName(const std::string& wanted, const std::string& name) {
     Balloon(L"Renamed", text);
 }
 
+// Known devices are answered at once. A new one is asked about on the UI thread while this connection waits, and
+// turned away when nobody answers within kAskSeconds or the sender gives up.
+bool App::Admit(const std::string& id, const std::string& name, const std::function<bool()>& gone) {
+    if (loopback_ || !askOn_) return true;  // loopback tests never prompt
+    {
+        std::lock_guard<std::mutex> lk(devMu_);
+        auto it = cfg_.devices.find(id);
+        if (it != cfg_.devices.end()) {
+            LOGI("devices: \"%s\" (%s) is %s", name.c_str(), id.c_str(), it->second.allowed ? "allowed" : "blocked");
+            return it->second.allowed;
+        }
+    }
+    auto req = std::make_shared<AdmitRequest>();
+    req->id = id;
+    req->name = name;
+    req->deadline = NowSeconds() + kAskSeconds;
+    LOGI("devices: asking whether \"%s\" (%s) may connect", name.c_str(), id.c_str());
+    PostMessageW(msgWnd_, kMsgAskDevice, 0, reinterpret_cast<LPARAM>(new std::shared_ptr<AdmitRequest>(req)));
+    std::unique_lock<std::mutex> lk(req->mu);
+    while (req->answer < 0) {
+        req->cv.wait_for(lk, std::chrono::milliseconds(250));
+        if (req->answer >= 0) break;
+        if (NowSeconds() >= req->deadline) {
+            req->answer = ui::kAllowDeny;
+            LOGI("devices: no answer about \"%s\" within %d s; turned away", name.c_str(), kAskSeconds);
+            break;
+        }
+        lk.unlock();
+        bool g = gone();
+        lk.lock();
+        if (g && req->answer < 0) {
+            req->answer = ui::kAllowDeny;
+            LOGI("devices: \"%s\" stopped waiting", name.c_str());
+        }
+    }
+    return req->answer == ui::kAllowOnce || req->answer == ui::kAllowAlways;
+}
+
+void App::AskNextDevice() {
+    if (asking_) return;  // the prompt that is open picks up the rest when it closes
+    asking_ = true;
+    auto settle = [](const std::shared_ptr<AdmitRequest>& r, int a) {
+        std::lock_guard<std::mutex> lk(r->mu);
+        if (r->answer < 0) r->answer = a;
+        r->cv.notify_all();
+    };
+    while (!askQueue_.empty()) {
+        std::shared_ptr<AdmitRequest> req = askQueue_.front();
+        askQueue_.pop_front();
+        auto settled = [req] {
+            std::lock_guard<std::mutex> lk(req->mu);
+            return req->answer >= 0;
+        };
+        if (settled()) continue;  // timed out, or the sender gave up, before its turn
+        int a;
+        auto known = cfg_.devices.find(req->id);  // answered for an earlier attempt meanwhile
+        bool wasKnown = known != cfg_.devices.end();
+        if (wasKnown) a = known->second.allowed ? ui::kAllowAlways : ui::kAllowBlock;
+        else if (!askOn_) a = ui::kAllowOnce;  // turned off while it waited
+        else a = ui::ShowAllowDialog(nullptr, iconBig_, Utf8ToWide(req->name), req->deadline, settled);
+        if (!wasKnown && (a == ui::kAllowAlways || a == ui::kAllowBlock)) {
+            {
+                std::lock_guard<std::mutex> lk(devMu_);
+                cfg_.devices[req->id] = Config::KnownDevice{a == ui::kAllowAlways, req->name};
+            }
+            cfg_.Save();
+        }
+        static const char* const kAnswers[] = {"turned away", "allowed once", "always allowed", "blocked"};
+        LOGI("devices: \"%s\" (%s) %s", req->name.c_str(), req->id.c_str(), kAnswers[std::clamp(a, 0, 3)]);
+        settle(req, a);
+        for (auto& other : askQueue_)  // the same device again (senders retry): same answer, no second prompt
+            if (other->id == req->id) settle(other, a);
+    }
+    asking_ = false;
+}
+
 void App::Balloon(const std::wstring& title, const std::wstring& text) {
     NOTIFYICONDATAW nid{};
     nid.cbSize = sizeof(nid);
@@ -442,6 +539,14 @@ void App::ShowTrayMenu() {
         AppendMenuW(m, MF_STRING, kMenuPro, (std::wstring(L"Buy AirGlass Pro (") + license::kPrice + L")…").c_str());
     }
 #endif
+    bool ask = askOn_;
+    AppendMenuW(m, MF_STRING | (ask ? MF_CHECKED : 0) | (cfg_.askManaged ? MF_GRAYED : 0), kMenuAskDevices,
+                cfg_.askManaged       ? L"Ask before new devices connect (set by your organisation)"
+                : ask || glass_.Pro() ? L"&Ask before new devices connect"
+                                      : L"&Ask before new devices connect (Pro)…");
+    if (ask || !cfg_.devices.empty())
+        AppendMenuW(m, MF_STRING | (cfg_.devices.empty() ? MF_GRAYED : 0), kMenuForgetDevices,
+                    L"&Forget allowed and blocked devices");
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), kMenuAutostart, L"Start with Windows");
     AppendMenuW(m, MF_STRING, kMenuLogs, L"Open log folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -468,6 +573,33 @@ void App::ShowTrayMenu() {
     case kMenuObs: glass_.ToggleObsMode(); break;  // these ask for Pro in the free edition
     case kMenuZoom: glass_.ToggleRegionZoom(); break;
     case kMenuDraw: glass_.ToggleDrawMode(); break;
+    case kMenuAskDevices:
+        if (cfg_.askManaged) break;
+        // Turning it on is Pro; turning it off never is, and a list that is on stays on after the trial, so it
+        // never quietly stops protecting the PC.
+        if (!askOn_ && !glass_.Pro()) {
+            PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProAllowList, 0);
+            break;
+        }
+        cfg_.askNewDevices = !askOn_;
+        askOn_ = cfg_.askNewDevices;
+        cfg_.Save();
+        LOGI("devices: ask before new devices connect: %s", askOn_ ? "on" : "off");
+        if (askOn_)
+            Balloon(L"AirGlass asks first",
+                    L"When a new device starts mirroring or audio, this PC asks whether to allow it.");
+        break;
+    case kMenuForgetDevices: {
+        {
+            std::lock_guard<std::mutex> lk(devMu_);
+            cfg_.devices.clear();
+        }
+        cfg_.Save();
+        LOGI("devices: list cleared");
+        Balloon(L"Device list cleared", askOn_ ? L"Every device will be asked about again."
+                                               : L"Devices you allowed or blocked are forgotten.");
+        break;
+    }
     case kMenuMediaFolder: {
         std::wstring dir = MediaFile(FOLDERID_Pictures, nullptr);
         ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -618,6 +750,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                               : w == GlassWindow::kProObs      ? L"OBS mode is"
                               : w == GlassWindow::kProZoom     ? L"Region zoom is"
                               : w == GlassWindow::kProDraw     ? L"Drawing on screen is"
+                              : w == GlassWindow::kProAllowList ? L"Asking before new devices connect is"
                                                                : L"Windowed mode is";
         std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
         reason += cfg_.trialStarted ? L" Your free trial has ended." : L" The free edition mirrors full screen.";
@@ -632,6 +765,12 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         std::unique_ptr<std::wstring> file(reinterpret_cast<std::wstring*>(l));
         Balloon(L"Recording saved", L"The device rotated, so the recording was finished. Saved to Videos\\AirGlass as " +
                                         file->substr(file->find_last_of(L'\\') + 1) + L". Press R to record again.");
+        return 0;
+    }
+    case kMsgAskDevice: {
+        std::unique_ptr<std::shared_ptr<AdmitRequest>> r(reinterpret_cast<std::shared_ptr<AdmitRequest>*>(l));
+        askQueue_.push_back(*r);
+        AskNextDevice();
         return 0;
     }
     case kMsgRenamed: {
@@ -977,6 +1116,13 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     };
     ev.nowPlayingChanged = [this, target] {
         if (!npPending_.exchange(true)) PostMessageW(target, kMsgNowPlaying, 0, 0);
+    };
+    askOn_ = cfg_.askNewDevices;
+    if (askOn_)
+        LOGI("devices: asking before new devices connect%s, %zu known", cfg_.askManaged ? " (set machine-wide)" : "",
+             cfg_.devices.size());
+    ev.admit = [this](const std::string& id, const std::string& name, const std::function<bool()>& gone) {
+        return Admit(id, name, gone);
     };
     if (!server_.Start(ri, uint16_t(cfg_.port), &glass_, &audio_, ev)) {
         MessageBoxW(nullptr, L"AirGlass could not open its network port.", L"AirGlass", MB_ICONERROR);

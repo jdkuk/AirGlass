@@ -3,6 +3,8 @@
 
 #include "common.h"
 
+#include <map>
+
 struct Config {
     std::wstring path;
     std::string name;          // receiver name shown on the sender
@@ -22,6 +24,15 @@ struct Config {
     int proSessions = 0;                      // mirroring sessions since then (refund: fewer than 10)
     long long trialStarted = 0;               // unix time of the first mirroring session (7-day Pro trial)
     bool trialEndShown = false;               // the "trial ended" dialog was shown once
+    // Allow-list (Pro): ask on the PC before a device that isn't known yet mirrors or plays audio.
+    // [security] askNewDevices; an IT department can turn it on for the machine in %ProgramData%\AirGlass\
+    // airglass.ini (askManaged: then it can't be turned off here and isn't written to config.ini).
+    bool askNewDevices = false, askManaged = false;
+    struct KnownDevice {
+        bool allowed = false;  // "Always allow" (true) or "Block" (false)
+        std::string name;      // as the sender called itself, for people reading config.ini
+    };
+    std::map<std::string, KnownDevice> devices;  // [devices] <sender id>=allow|block <name>
 
     void Load();   // creates identity on first run
     void Save() const;
