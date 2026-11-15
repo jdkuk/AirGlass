@@ -43,7 +43,7 @@ constexpr UINT_PTR kTimerNpDebounce = 3;
 constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer has registered our tray icon
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
-constexpr UINT kMenuObs = 110;
+constexpr UINT kMenuObs = 110, kMenuZoom = 111;
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 struct StartEvent {
@@ -397,6 +397,8 @@ void App::ShowTrayMenu() {
         AppendMenuW(m, MF_STRING, kMenuRecord, pro ? rec.c_str() : L"Start recording (Pro)…");
         AppendMenuW(m, MF_STRING | (glass_.ObsMode() ? MF_CHECKED : 0), kMenuObs,
                     pro ? L"OBS mode\tO" : L"OBS mode (Pro)…");
+        AppendMenuW(m, MF_STRING, kMenuZoom,
+                    !pro ? L"Zoom into a region (Pro)…" : glass_.Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
     }
     AppendMenuW(m, MF_STRING, kMenuMediaFolder, L"Open screenshots folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -443,7 +445,7 @@ void App::ShowTrayMenu() {
     case kMenuLogs: ShellExecuteW(nullptr, L"open", AppDataDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case kMenuShow: glass_.BringToFront(); break;
     case kMenuRename: RenameReceiver(); break;
-    case kMenuPro: ShowUpgrade(L"Pro adds the floating glass window, screenshots and recording."); break;
+    case kMenuPro: ShowUpgrade(L"Pro adds the glass window, screenshots, recording, OBS mode and region zoom."); break;
     case kMenuShot:
         if (glass_.Pro()) TakeScreenshot();
         else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProScreenshot, 0);
@@ -452,7 +454,8 @@ void App::ShowTrayMenu() {
         if (glass_.Pro()) ToggleRecording();
         else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProRecord, 0);
         break;
-    case kMenuObs: glass_.ToggleObsMode(); break;  // asks for Pro in the free edition
+    case kMenuObs: glass_.ToggleObsMode(); break;  // these ask for Pro in the free edition
+    case kMenuZoom: glass_.ToggleRegionZoom(); break;
     case kMenuMediaFolder: {
         std::wstring dir = MediaFile(FOLDERID_Pictures, nullptr);
         ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -601,6 +604,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const wchar_t* what = w == GlassWindow::kProScreenshot ? L"Screenshots are"
                               : w == GlassWindow::kProRecord   ? L"Recording is"
                               : w == GlassWindow::kProObs      ? L"OBS mode is"
+                              : w == GlassWindow::kProZoom     ? L"Region zoom is"
                                                                : L"Windowed mode is";
         std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
         reason += cfg_.trialStarted ? L" Your free trial has ended." : L" The free edition mirrors full screen.";

@@ -22,6 +22,8 @@ cbuffer ComposeCB : register(b0)
     float4 gTv0;        // 4th button x, 4th button hover, TV capsule 0/1, -
     float4 gTv1;        // TV corner (0 br, 1 bl, 2 tr, 3 tl), TV size (0 s, 1 m, 2 l), -, -
     float4 gMode;       // OBS mode 0/1, -, -, -
+    float4 gZoom;       // region zoom: part of the picture shown, u0 v0 u1 v1 (0 0 1 1 = all of it)
+    float4 gSel;        // region-zoom rectangle being dragged, x0 y0 x1 y1 (window px); none when x1 <= x0
 };
 
 Texture2D<float4> tVideo : register(t0);
@@ -171,16 +173,18 @@ float3 CatmullRom(float2 uv)
     return saturate(r);
 }
 
+float2 ZoomSize() { return gZoom.zw - gZoom.xy; }
+
 float2 VideoUV(float2 p)
 {
     float2 vs = max(gVideo.zw - gVideo.xy, 1.0);
-    return (p - gVideo.xy) / vs;
+    return gZoom.xy + (p - gVideo.xy) / vs * ZoomSize();
 }
 
 float VideoRatio()
 {
     float vw = max(gVideo.z - gVideo.x, 1.0);
-    return gVInfo.x / vw;  // texels per screen pixel
+    return gVInfo.x * ZoomSize().x / vw;  // texels per screen pixel
 }
 
 float3 SampleVideoSharp(float2 p)
@@ -201,7 +205,7 @@ float3 SampleVideoSharp(float2 p)
     {
         // Shrinking: 2x2 taps one mip finer than the footprint (sharper than plain trilinear).
         float lod = max(log2(ratio) - 1.0, 0.0);
-        float2 d = 0.25 / max(gVideo.zw - gVideo.xy, 1.0);
+        float2 d = 0.25 / max(gVideo.zw - gVideo.xy, 1.0) * ZoomSize();
         c = (SampleVideoLod(uv + float2(-d.x, -d.y), lod) + SampleVideoLod(uv + float2(d.x, -d.y), lod) +
              SampleVideoLod(uv + float2(-d.x, d.y), lod) + SampleVideoLod(uv + float2(d.x, d.y), lod)) * 0.25;
     }
@@ -517,6 +521,21 @@ float3 ApplyPill(float2 p, float3 c)
 }
 
 // ------------------------------------------------------------------------------------------
+// Region zoom: the rectangle being dragged, with the rest of the picture dimmed
+
+float3 ApplySelection(float2 p, float3 c)
+{
+    if (gSel.z <= gSel.x)
+        return c;
+    float2 sc = (gSel.xy + gSel.zw) * 0.5;
+    float d = sdBox(p - sc, (gSel.zw - gSel.xy) * 0.5);
+    float inside = saturate(0.5 - d / AA());
+    c = lerp(c * 0.55, c, inside);
+    float edgeLine = saturate(1.0 - abs(d) / (1.0 * gGeom.z));
+    return lerp(c, float3(1.0, 1.0, 1.0), edgeLine * 0.9);
+}
+
+// ------------------------------------------------------------------------------------------
 
 float4 PSCompose(VSOut i) : SV_Target
 {
@@ -541,6 +560,7 @@ float4 PSCompose(VSOut i) : SV_Target
     col = ApplyPlaceholder(p, col);
     col = ApplyPill(p, col);
     col = ApplyRim(p, d, col);
+    col = ApplySelection(p, col);
     float a = cov * opacity;
     return float4(col * a, a) + outc * (1.0 - a);
 }

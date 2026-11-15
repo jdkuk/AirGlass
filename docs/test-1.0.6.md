@@ -28,3 +28,20 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 | 6 | End the session and mirror again. | The window opens in OBS mode again (remembered as `obs=1` under `[window]`), and OBS picks it up again by its title. |
 | 7 | Tray menu during mirroring; right-click in the window. | Both show "OBS mode  O" with a tick; choosing it turns OBS mode off and the glass comes back, title "AirGlass". |
 | 8 | Free edition (trial over, or loopback with `AIRGLASS_DEBUG_FREE=1`): press <kbd>O</kbd>, or tray → "OBS mode (Pro)…". | The AirGlass Pro dialog: "OBS mode is part of AirGlass Pro…". With `obs=1` left over from the trial, the free edition still shows the normal full-screen view. |
+
+## Region zoom (Pro, <kbd>Z</kbd>)
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Mirror in the glass window, press <kbd>Z</kbd>. | The cursor over the window becomes a cross. |
+| 2 | Drag a rectangle over part of the picture. | A white outline follows the drag and the rest of the picture dims. On release the view glides smoothly into that region; the window keeps its size and shape, and the picture isn't stretched. |
+| 3 | Without pressing Z, hold <kbd>Ctrl</kbd> and drag a smaller rectangle. | Zooms further into the zoomed view (up to 8x). |
+| 4 | Press <kbd>Z</kbd>. Zoom in again, press <kbd>Esc</kbd>. Zoom in again, double-click. | Each one glides back out to the whole picture. <kbd>Esc</kbd> while not zoomed still leaves full screen. |
+| 5 | Press <kbd>Z</kbd> and just click (no drag). | Nothing zooms; the cursor goes back to the arrow. The window doesn't move. |
+| 6 | Zoom in near a corner of the picture. | The view stays inside the picture (no black edge). |
+| 7 | Zoom in, then press <kbd>S</kbd>. | The PNG and the clipboard picture show the zoomed view. |
+| 8 | Zoom in with OBS mode on (<kbd>O</kbd>). | OBS captures the zoomed view on green. |
+| 9 | Zoom in, then press <kbd>F</kbd> for full screen, and <kbd>Esc</kbd> twice. | The zoom carries over to full screen; the first <kbd>Esc</kbd> zooms out, the second leaves full screen. |
+| 10 | Zoom in and rotate the phone; or end the session and mirror again. | The zoom resets to the whole picture. |
+| 11 | Tray menu during mirroring; right-click in the window. | "Zoom into a region  Z" (or "Zoom out  Z" when zoomed) in both. |
+| 12 | Free edition: press <kbd>Z</kbd>, or <kbd>Ctrl</kbd>+click the full-screen picture. | The AirGlass Pro dialog: "Region zoom is part of AirGlass Pro…". |

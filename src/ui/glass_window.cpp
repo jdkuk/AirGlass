@@ -23,10 +23,11 @@ constexpr float kRadiusDp = 30.0f;  // superellipse radius (reads like ~22 dip c
 constexpr float kBezelDp = 7.0f;
 constexpr float kShadowOffsetDp = 8.0f, kShadowSoftDp = 11.0f, kShadowAlpha = 0.36f;
 constexpr float kControlsIdleSeconds = 2.2f;
+constexpr float kMinZoom = 0.125f;  // region zoom: at most 8x
 
 struct ComposeCB {
     float view[4], slab[4], video[4], geom[4], appear[4], shadow[4], vinfo[4], pill[4], pillInfo[4], drop[4], btnX[4],
-        btnState[4], icons[4], label[4], labelInfo[4], tv0[4], tv1[4], mode[4];
+        btnState[4], icons[4], label[4], labelInfo[4], tv0[4], tv1[4], mode[4], zoom[4], sel[4];
 };
 struct ConvertCB {
     float row0[4], row1[4], row2[4], info[4];
@@ -745,6 +746,9 @@ void GlassWindow::RenderLocked() {
         anim_.dropA = {0, 0};
         anim_.press = {0, 0};
         anim_.reveal = {0, 0};
+        anim_.zoomX = {s.zoomCx, 0};
+        anim_.zoomY = {s.zoomCy, 0};
+        anim_.zoomS = {s.zoomS, 0};
     }
     if (s.snap) {
         anim_.x0 = {s.slabTarget.x0, 0};
@@ -762,6 +766,10 @@ void GlassWindow::RenderLocked() {
     StepSpring(anim_.controls.x, anim_.controls.v, s.controlsTarget, 380.0f, 0.82f, dt);
     bool hasVideo = frameSeq_.load() > s.sessionStartSeq;
     StepSpring(anim_.reveal.x, anim_.reveal.v, hasVideo ? 1.0f : 0.0f, 90.0f, 1.0f, dt);
+    // Critically damped and alike, so the region moves on a straight line and never leaves the picture.
+    StepSpring(anim_.zoomX.x, anim_.zoomX.v, s.zoomCx, 120.0f, 1.0f, dt);
+    StepSpring(anim_.zoomY.x, anim_.zoomY.v, s.zoomCy, 120.0f, 1.0f, dt);
+    StepSpring(anim_.zoomS.x, anim_.zoomS.v, s.zoomS, 120.0f, 1.0f, dt);
 
     RectF slab{anim_.x0.x, anim_.y0.x, anim_.x1.x, anim_.y1.x};
     float fs = std::clamp(anim_.fs.x, 0.0f, 1.0f);
@@ -807,6 +815,9 @@ void GlassWindow::RenderLocked() {
     Set4(cb.tv0, L.btnX[3], hv[3], s.tv ? 1.0f : 0.0f, 0);
     Set4(cb.tv1, float(s.tvCorner), float(s.tvSize), 0, 0);
     Set4(cb.mode, s.obs ? 1.0f : 0.0f, 0, 0, 0);
+    float zs = std::clamp(anim_.zoomS.x, kMinZoom * 0.5f, 1.0f) * 0.5f;
+    Set4(cb.zoom, anim_.zoomX.x - zs, anim_.zoomY.x - zs, anim_.zoomX.x + zs, anim_.zoomY.x + zs);
+    if (s.selOn) Set4(cb.sel, s.sel.x0, s.sel.y0, s.sel.x1, s.sel.y1);
     float gs = std::min(L.video.W(), L.video.H()) * 0.12f;
     float gcx = L.video.CX(), gcy = L.video.CY() - L.video.H() * 0.05f;
 
@@ -870,7 +881,10 @@ void GlassWindow::RenderLocked() {
                 Near(anim_.dropX.x, anim_.dropX.v, dropTarget, 0.3f) &&
                 Near(anim_.dropA.x, anim_.dropA.v, hovering ? 1.0f : 0.0f, 0.002f) &&
                 Near(anim_.press.x, anim_.press.v, s.pressing ? 1.0f : 0.0f, 0.002f) &&
-                Near(anim_.reveal.x, anim_.reveal.v, hasVideo ? 1.0f : 0.0f, 0.002f) && hasVideo;
+                Near(anim_.reveal.x, anim_.reveal.v, hasVideo ? 1.0f : 0.0f, 0.002f) &&
+                Near(anim_.zoomX.x, anim_.zoomX.v, s.zoomCx, 0.0002f) &&
+                Near(anim_.zoomY.x, anim_.zoomY.v, s.zoomCy, 0.0002f) &&
+                Near(anim_.zoomS.x, anim_.zoomS.v, s.zoomS, 0.0002f) && hasVideo;
     if (!done) needFrame_ = true;
     if (slabDone) {
         anim_.x0 = {s.slabTarget.x0, 0};
@@ -1267,6 +1281,7 @@ void GlassWindow::SetPinned(bool pinned) {
 void GlassWindow::SetPro(bool pro) {
     pro_ = pro;
     ApplyObsMode();  // the free edition never shows Pro-only looks, even if they were chosen during the trial
+    if (!pro) ResetZoom();
 }
 
 void GlassWindow::ToggleObsMode() {
@@ -1294,6 +1309,87 @@ void GlassWindow::ApplyObsMode() {
     Wake();
 }
 
+void GlassWindow::ToggleRegionZoom() {
+    if (!sessionLive_ || !visible_) return;
+    if (!pro_) {
+        if (onUpgradeRequested) onUpgradeRequested(kProZoom);
+        return;
+    }
+    if (Zoomed() || zoomArmed_ || zoomSelecting_) {
+        ResetZoom();
+        return;
+    }
+    zoomArmed_ = true;  // the next drag in the window picks the region
+    LOGI("zoom: drag a rectangle to zoom in");
+    UpdateControls();
+    POINT pt;
+    GetCursorPos(&pt);
+    if (WindowFromPoint(pt) == hwnd_) SetCursor(LoadCursorW(nullptr, IDC_CROSS));
+}
+
+void GlassWindow::SetZoom(float cx, float cy, float s) {
+    zoomS_ = std::clamp(s, kMinZoom, 1.0f);
+    zoomCx_ = std::clamp(cx, zoomS_ * 0.5f, 1.0f - zoomS_ * 0.5f);
+    zoomCy_ = std::clamp(cy, zoomS_ * 0.5f, 1.0f - zoomS_ * 0.5f);
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        shared_.zoomCx = zoomCx_;
+        shared_.zoomCy = zoomCy_;
+        shared_.zoomS = zoomS_;
+    }
+    Wake();
+}
+
+void GlassWindow::ResetZoom() {
+    bool was = Zoomed();
+    if (zoomSelecting_ && GetCapture() == hwnd_) ReleaseCapture();
+    zoomArmed_ = zoomSelecting_ = false;
+    SetSelection(nullptr);
+    if (!was) return;
+    SetZoom(0.5f, 0.5f, 1.0f);
+    LOGI("zoom: reset");
+}
+
+void GlassWindow::SetSelection(const RectF* sel) {
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        shared_.selOn = sel != nullptr;
+        if (sel) shared_.sel = *sel;
+    }
+    Wake();
+}
+
+// The rectangle between two client points, kept inside the picture.
+RectF GlassWindow::SelectionRect(POINT a, POINT b) {
+    RectF v;
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        v = pubLayout_.video;
+    }
+    auto cx = [&](LONG x) { return std::clamp(float(x), v.x0, v.x1); };
+    auto cy = [&](LONG y) { return std::clamp(float(y), v.y0, v.y1); };
+    return {std::min(cx(a.x), cx(b.x)), std::min(cy(a.y), cy(b.y)), std::max(cx(a.x), cx(b.x)),
+            std::max(cy(a.y), cy(b.y))};
+}
+
+void GlassWindow::ZoomToSelection(const RectF& sel) {
+    RectF v;
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        v = pubLayout_.video;
+    }
+    if (sel.W() < 12.0f * dp_ || sel.H() < 12.0f * dp_ || v.W() < 1.0f || v.H() < 1.0f) return;  // a click
+    // The selection in the picture now on screen, then in the whole picture. The region stays square in uv
+    // (the picture's own shape) and covers the whole selection.
+    float u0 = (sel.x0 - v.x0) / v.W(), u1 = (sel.x1 - v.x0) / v.W();
+    float v0 = (sel.y0 - v.y0) / v.H(), v1 = (sel.y1 - v.y0) / v.H();
+    float base = zoomS_;
+    float cx = zoomCx_ + (0.5f * (u0 + u1) - 0.5f) * base;
+    float cy = zoomCy_ + (0.5f * (v0 + v1) - 0.5f) * base;
+    SetZoom(cx, cy, base * std::max(u1 - u0, v1 - v0));
+    LOGI("zoom: %.1fx at %.2f,%.2f", 1.0f / zoomS_, zoomCx_, zoomCy_);
+}
+
 void GlassWindow::RememberSize() {
     if (fullscreen_) return;
     RectF s = hasAnimTarget_ ? animTarget_ : CurrentSlabScreen();
@@ -1312,6 +1408,7 @@ void GlassWindow::RememberSize() {
 void GlassWindow::BeginSession(uint64_t sid, const std::wstring& deviceName, const std::string& model) {
     sid_ = sid;
     sessionLive_ = true;
+    ResetZoom();
     vidW_ = vidH_ = contentW_ = 0;
     {
         std::lock_guard<std::recursive_mutex> g(gpuLock_);
@@ -1460,6 +1557,7 @@ void GlassWindow::ApplyAspect(float a) {
         std::lock_guard<std::mutex> lk(stateMu_);
         shared_.aspect = a;
     }
+    if (changed) ResetZoom();  // a rotated picture is a different picture
     if (changed && visible_ && !tvHiding_) {
         if (fullscreen_) {
             restoreSlab_ = SlabForAspect(restoreSlab_, a);
@@ -1755,7 +1853,7 @@ void GlassWindow::UpdateControls() {
         }
         Wake();
     }
-    bool hide = fullscreen_ && mouseInside_ && !want;
+    bool hide = fullscreen_ && mouseInside_ && !want && !zoomArmed_ && !zoomSelecting_;
     if (hide != cursorHidden_) {
         cursorHidden_ = hide;
         POINT pt;
@@ -1788,6 +1886,7 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     AppendMenuW(m, MF_STRING | (pinned_ ? MF_CHECKED : 0), 1, L"Keep on top\tP");
     AppendMenuW(m, MF_STRING | (fullscreen_ ? MF_CHECKED : 0), 2, L"Full screen\tF");
     AppendMenuW(m, MF_STRING | (ObsMode() ? MF_CHECKED : 0), 4, pro_ ? L"OBS mode\tO" : L"OBS mode (Pro)…");
+    AppendMenuW(m, MF_STRING, 5, !pro_ ? L"Zoom into a region (Pro)…" : Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, 3, L"Disconnect");
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd_, nullptr);
@@ -1796,6 +1895,7 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     if (cmd == 2) ActivateButton(2);
     if (cmd == 3) ActivateButton(0);
     if (cmd == 4) ToggleObsMode();
+    if (cmd == 5) ToggleRegionZoom();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1951,6 +2051,11 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             mouseInside_ = true;
         }
         lastMouseMove_ = NowSeconds();
+        if (zoomSelecting_) {
+            RectF r = SelectionRect(zoomFrom_, POINT{LONG(x), LONG(y)});
+            SetSelection(&r);
+            return 0;
+        }
         if (dragArmed_ && (std::abs(LONG(x) - dragStart_.x) > GetSystemMetrics(SM_CXDRAG) ||
                            std::abs(LONG(y) - dragStart_.y) > GetSystemMetrics(SM_CYDRAG))) {
             dragArmed_ = false;
@@ -1977,6 +2082,17 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
         return 0;
     case WM_LBUTTONDOWN: {
         float x = float(GET_X_LPARAM(l)), y = float(GET_Y_LPARAM(l));
+        if (sessionLive_ && (zoomArmed_ || (w & MK_CONTROL))) {  // region zoom: Z then drag, or Ctrl+drag
+            if (!pro_) {
+                if (onUpgradeRequested) onUpgradeRequested(kProZoom);
+                return 0;
+            }
+            zoomArmed_ = false;
+            zoomSelecting_ = true;
+            zoomFrom_ = POINT{LONG(x), LONG(y)};
+            SetCapture(hwnd_);
+            return 0;
+        }
         SetCapture(hwnd_);
         bool over = false;
         int b = ButtonAt(x, y, &over);
@@ -1993,6 +2109,15 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
     }
     case WM_LBUTTONUP: {
         float x = float(GET_X_LPARAM(l)), y = float(GET_Y_LPARAM(l));
+        if (zoomSelecting_) {
+            RectF r = SelectionRect(zoomFrom_, POINT{LONG(x), LONG(y)});
+            zoomSelecting_ = false;  // first, so WM_CAPTURECHANGED doesn't treat this as a cancel
+            ReleaseCapture();
+            SetSelection(nullptr);
+            ZoomToSelection(r);
+            UpdateControls();
+            return 0;
+        }
         ReleaseCapture();
         dragArmed_ = false;
         if (pressedBtn_ >= 0) {
@@ -2007,7 +2132,17 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
         Wake();
         return 0;
     }
+    case WM_CAPTURECHANGED:
+        if (zoomSelecting_) {  // capture taken away mid-drag (Alt+Tab, a dialog): drop the selection
+            zoomSelecting_ = false;
+            SetSelection(nullptr);
+        }
+        break;
     case WM_LBUTTONDBLCLK: {
+        if (Zoomed()) {
+            ResetZoom();
+            return 0;
+        }
         bool over = false;
         if (ButtonAt(float(GET_X_LPARAM(l)), float(GET_Y_LPARAM(l)), &over) < 0 && !over) {
             if (tv_) TvButtonClicked(kTvFull);
@@ -2053,14 +2188,20 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
     }
     case WM_SETCURSOR:
         if (LOWORD(l) == HTCLIENT) {
-            SetCursor(cursorHidden_ ? nullptr : LoadCursorW(nullptr, IDC_ARROW));
+            SetCursor(zoomArmed_ || zoomSelecting_ ? LoadCursorW(nullptr, IDC_CROSS)
+                      : cursorHidden_              ? nullptr
+                                                   : LoadCursorW(nullptr, IDC_ARROW));
             return TRUE;
         }
         break;
     case WM_KEYDOWN:
         switch (w) {
         case VK_ESCAPE:
-            if (fullscreen_) ExitFullscreen();
+            if (Zoomed() || zoomArmed_ || zoomSelecting_) ResetZoom();  // zoom out first, then leave full screen
+            else if (fullscreen_) ExitFullscreen();
+            return 0;
+        case 'Z':  // Pro: region zoom
+            ToggleRegionZoom();
             return 0;
         case VK_F11:
         case 'F':

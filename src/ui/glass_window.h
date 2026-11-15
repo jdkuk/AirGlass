@@ -70,8 +70,8 @@ public:
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
     // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
-    // kProObs (OBS mode).
-    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3 };
+    // kProObs (OBS mode), kProZoom (region zoom).
+    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4 };
     std::function<void(int feature)> onUpgradeRequested;
 
     // Pro: screenshot of the glass window (PNG with transparency, saved by the caller's path) and the
@@ -90,6 +90,10 @@ public:
     // (#00B140) round the picture, no glass, shadow or capsule, and the fixed title "AirGlass (OBS)".
     void ToggleObsMode();
     bool ObsMode() const { return obs_ && pro_; }
+    // Pro: region zoom. Z (or the menus) then drag a rectangle, or Ctrl+drag, to zoom smoothly into that part of
+    // the picture; Z again, Esc or a double-click zooms back out. Screenshots and OBS mode show the zoomed view.
+    void ToggleRegionZoom();
+    bool Zoomed() const { return zoomS_ < 0.999f; }
 
     // FrameSink (decoder threads)
     ID3D11Device* GpuDevice() override { return dev_.Get(); }
@@ -130,9 +134,13 @@ private:
         bool labelDirty = false;
         std::wstring labelName;
         bool settleRequest = false, dismissRequest = false;
+        float zoomCx = 0.5f, zoomCy = 0.5f, zoomS = 1.0f;  // region zoom: centre and size, in picture uv
+        bool selOn = false;
+        RectF sel;  // region-zoom rectangle being dragged (window px)
     };
     struct Anim {
         Spring x0, y0, x1, y1, appear, fs, controls, dropX, dropA, press, reveal;
+        Spring zoomX{0.5f, 0}, zoomY{0.5f, 0}, zoomS{1.0f, 0};
         double lastTime = 0, t0 = 0;
     };
 
@@ -154,6 +162,12 @@ private:
     void RenderLabelLocked(const std::wstring& name, float dp);
     static Layout ComputeLayout(const RectF& slab, float fs, float dp, float aspect, int buttons, float boost, bool obs);
     void ApplyObsMode();
+    // Region zoom (UI thread)
+    void SetZoom(float cx, float cy, float s);
+    void ResetZoom();
+    void ZoomToSelection(const RectF& sel);
+    void SetSelection(const RectF* sel);  // nullptr hides it
+    RectF SelectionRect(POINT a, POINT b);
     void UpdateTvBoost();
 
     // Geometry (UI thread)
@@ -256,6 +270,9 @@ private:
     Options opt_;
     bool pro_ = true;
     bool obs_ = false;  // OBS mode chosen (in effect only with Pro)
+    bool zoomArmed_ = false, zoomSelecting_ = false;  // Z pressed / dragging the zoom rectangle
+    POINT zoomFrom_{};
+    float zoomCx_ = 0.5f, zoomCy_ = 0.5f, zoomS_ = 1.0f;  // target region (picture uv), 1 = the whole picture
     // TV Mode
     bool tv_ = false, sessionLive_ = false, tvHidden_ = false, tvHiding_ = false, tvFree_ = false;
     TvLayout tvDefaults_, tvLayout_;

@@ -98,6 +98,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | Screenshots: PNG of the glass window + the picture on the clipboard (<kbd>S</kbd>) | | ✅ |
 | Record the mirrored screen to MP4, original quality, no re-encode (<kbd>R</kbd>) | | ✅ |
 | OBS mode: a chroma-key green window for OBS Window Capture (<kbd>O</kbd>) | | ✅ |
+| Region zoom: drag a rectangle to zoom into part of the picture (<kbd>Z</kbd>) | | ✅ |
 | Use on up to 3 PCs | | ✅ |
 
 **Every install starts with a free 7-day Pro trial** from your first mirroring session, so you can try the window,
@@ -130,6 +131,7 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 | Drag anywhere | move |
 | Drag an edge / corner | resize (keeps the device's shape) |
 | Mouse wheel | smooth zoom around the cursor |
+| <kbd>Z</kbd> then drag, or <kbd>Ctrl</kbd>+drag | zoom into that region of the picture (<kbd>Z</kbd>, <kbd>Esc</kbd> or double-click zooms out) |
 | Double-click, <kbd>F</kbd> or <kbd>F11</kbd> | full screen (<kbd>Esc</kbd> leaves) |
 | Hover | glass controls: ✕ disconnect · 📌 keep on top · ⤢ full screen |
 | <kbd>P</kbd> | keep on top |

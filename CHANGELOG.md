@@ -15,6 +15,9 @@ All notable changes to AirGlass are documented here. The format is based on
 - Pro: OBS mode. Press <kbd>O</kbd> (or use the tray or window menu) for a window OBS Window Capture handles well:
   opaque, chroma-key green (#00B140) round a plain rectangular picture, no glass, shadow or controls, and always
   titled "AirGlass (OBS)" so the capture source finds it again. AirGlass remembers the choice.
+- Pro: region zoom. Press <kbd>Z</kbd> and drag a rectangle (or <kbd>Ctrl</kbd>+drag) to zoom smoothly into that
+  part of the mirrored picture, up to 8x; drag again to zoom further. <kbd>Z</kbd>, <kbd>Esc</kbd> or a double-click
+  zooms back out. Screenshots and OBS mode show the zoomed view; recordings keep the whole picture.
 
 ## [1.0.5] - 2026-11-15
 
