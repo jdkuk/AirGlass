@@ -5,7 +5,7 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
-## [1.0.6] - unreleased
+## [1.0.6] - 2026-11-15
 
 ### Added
 - Rename this PC: right-click the tray icon → **Rename this PC…** to name the receiver after the room. Devices see
