@@ -105,6 +105,7 @@ void Config::Load() {
     pinned = ReadInt(path, L"window", L"pinned", 0) != 0;
     longPortrait = ReadInt(path, L"window", L"portrait", 0);
     longLandscape = ReadInt(path, L"window", L"landscape", 0);
+    obsMode = ReadInt(path, L"window", L"obs", 0) != 0;
     welcomed = ReadInt(path, L"app", L"welcomed", 0) != 0;
     debugLog = ReadInt(path, L"app", L"debuglog", 0) != 0;
     licenseKey = WideToUtf8(Read(path, L"license", L"key"));
@@ -130,6 +131,7 @@ void Config::Save() const {
     Write(path, L"window", L"pinned", pinned ? L"1" : L"0");
     Write(path, L"window", L"portrait", std::to_wstring(longPortrait));
     Write(path, L"window", L"landscape", std::to_wstring(longLandscape));
+    Write(path, L"window", L"obs", obsMode ? L"1" : L"0");
     Write(path, L"app", L"welcomed", welcomed ? L"1" : L"0");
     Write(path, L"app", L"debuglog", debugLog ? L"1" : L"0");
     Write(path, L"license", L"key", Utf8ToWide(licenseKey));

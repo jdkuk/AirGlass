@@ -10,6 +10,7 @@
 | Move, resize, zoom, keep on top, corner float | | ✅ |
 | Screenshots (<kbd>S</kbd>): PNG to Pictures\AirGlass + the picture on the clipboard | | ✅ |
 | Recording (<kbd>R</kbd>): MP4 to Videos\AirGlass, the sender's H.264 copied as-is, no sound | | ✅ |
+| OBS mode (<kbd>O</kbd>): opaque window, chroma-key green (#00B140) round the picture, title "AirGlass (OBS)" | | ✅ |
 | PCs per key | | 3 |
 
 **Free trial:** the first mirroring session starts a 7-day Pro trial (`license::kTrialDays`; `trial` in

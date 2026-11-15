@@ -43,6 +43,7 @@ constexpr UINT_PTR kTimerNpDebounce = 3;
 constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer has registered our tray icon
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
+constexpr UINT kMenuObs = 110;
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 struct StartEvent {
@@ -341,7 +342,8 @@ void App::RenameReceiver() {
         std::vector<std::string> taken;
         for (auto& t : MdnsResponder::BrowseReceiverNames(1.2))
             if (_stricmp(t.c_str(), own.c_str()) != 0) taken.push_back(t);  // our own answer, under the old name
-        PostMessageW(target, kMsgRenamed, 0, reinterpret_cast<LPARAM>(new std::string(UniqueReceiverName(wanted, taken))));
+        auto* name = new std::string(UniqueReceiverName(wanted, taken));
+        PostMessageW(target, kMsgRenamed, 0, reinterpret_cast<LPARAM>(name));
     });
 }
 
@@ -393,6 +395,8 @@ void App::ShowTrayMenu() {
             rec = t;
         }
         AppendMenuW(m, MF_STRING, kMenuRecord, pro ? rec.c_str() : L"Start recording (Pro)…");
+        AppendMenuW(m, MF_STRING | (glass_.ObsMode() ? MF_CHECKED : 0), kMenuObs,
+                    pro ? L"OBS mode\tO" : L"OBS mode (Pro)…");
     }
     AppendMenuW(m, MF_STRING, kMenuMediaFolder, L"Open screenshots folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -448,6 +452,7 @@ void App::ShowTrayMenu() {
         if (glass_.Pro()) ToggleRecording();
         else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProRecord, 0);
         break;
+    case kMenuObs: glass_.ToggleObsMode(); break;  // asks for Pro in the free edition
     case kMenuMediaFolder: {
         std::wstring dir = MediaFile(FOLDERID_Pictures, nullptr);
         ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -595,6 +600,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case kMsgUpgrade: {
         const wchar_t* what = w == GlassWindow::kProScreenshot ? L"Screenshots are"
                               : w == GlassWindow::kProRecord   ? L"Recording is"
+                              : w == GlassWindow::kProObs      ? L"OBS mode is"
                                                                : L"Windowed mode is";
         std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
         reason += cfg_.trialStarted ? L" Your free trial has ended." : L" The free edition mirrors full screen.";
@@ -867,6 +873,7 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     opt.pinned = cfg_.pinned;
     opt.longPortrait = cfg_.longPortrait;
     opt.longLandscape = cfg_.longLandscape;
+    opt.obs = cfg_.obsMode;
     if (!glass_.Create(inst, iconBig_, iconSmall_, opt)) {
         MessageBoxW(nullptr, L"AirGlass could not initialise Direct3D 11 / DirectComposition.", L"AirGlass",
                     MB_ICONERROR);
@@ -919,6 +926,7 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
         cfg_.pinned = o.pinned;
         cfg_.longPortrait = o.longPortrait;
         cfg_.longLandscape = o.longLandscape;
+        cfg_.obsMode = o.obs;
         cfg_.Save();
     };
 

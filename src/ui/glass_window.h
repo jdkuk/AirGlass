@@ -18,6 +18,7 @@ public:
         bool pinned = false;
         int longPortrait = 0;   // remembered slab long side (px) per orientation
         int longLandscape = 0;
+        bool obs = false;       // OBS mode (Pro)
     };
     // Placement requested by TV Mode (over the control pipe).
     struct TvLayout {
@@ -48,7 +49,7 @@ public:
 
     // Free edition: every session opens full screen, and leaving it (Esc, F, double-click, the
     // capsule, TV float) calls onUpgradeRequested instead. Pro unlocks the window.
-    void SetPro(bool pro) { pro_ = pro; }
+    void SetPro(bool pro);
     bool Pro() const { return pro_; }
     HWND Hwnd() const { return hwnd_; }
 
@@ -68,8 +69,9 @@ public:
     std::function<void()> onUserClose;
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
-    // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord.
-    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2 };
+    // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
+    // kProObs (OBS mode).
+    enum ProFeature { kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3 };
     std::function<void(int feature)> onUpgradeRequested;
 
     // Pro: screenshot of the glass window (PNG with transparency, saved by the caller's path) and the
@@ -83,6 +85,11 @@ public:
     std::function<void()> onRecordToggle;
     // The picture inside the video frame changed size (black side bars detected or gone).
     std::function<void(uint64_t sid, int width, int height)> onContentSize;
+
+    // Pro: OBS mode (O key, tray or window menu). An opaque window for OBS Window Capture: chroma-key green
+    // (#00B140) round the picture, no glass, shadow or capsule, and the fixed title "AirGlass (OBS)".
+    void ToggleObsMode();
+    bool ObsMode() const { return obs_ && pro_; }
 
     // FrameSink (decoder threads)
     ID3D11Device* GpuDevice() override { return dev_.Get(); }
@@ -115,6 +122,7 @@ private:
         int hoverBtn = -1;
         bool pressing = false, pinned = false;
         bool tv = false;
+        bool obs = false;  // OBS mode in effect (Pro)
         int tvCorner = 0, tvSize = 0;
         float tvBoost = 1.0f;  // controls readable from the couch: 1080p-equivalent size on big screens
         float aspect = 0.4613f;
@@ -144,7 +152,8 @@ private:
     void ProbePillarboxLocked(int w, int h);
     void ApplyAspect(float a);
     void RenderLabelLocked(const std::wstring& name, float dp);
-    static Layout ComputeLayout(const RectF& slab, float fs, float dp, float aspect, int buttons, float boost);
+    static Layout ComputeLayout(const RectF& slab, float fs, float dp, float aspect, int buttons, float boost, bool obs);
+    void ApplyObsMode();
     void UpdateTvBoost();
 
     // Geometry (UI thread)
@@ -246,6 +255,7 @@ private:
     bool inSizeMove_ = false, sizing_ = false, movedInLoop_ = false;
     Options opt_;
     bool pro_ = true;
+    bool obs_ = false;  // OBS mode chosen (in effect only with Pro)
     // TV Mode
     bool tv_ = false, sessionLive_ = false, tvHidden_ = false, tvHiding_ = false, tvFree_ = false;
     TvLayout tvDefaults_, tvLayout_;

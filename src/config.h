@@ -14,6 +14,7 @@ struct Config {
     int displayW = 0, displayH = 0, displayHz = 0, maxFps = 0;  // 0 = automatic
     bool pinned = false;
     int longPortrait = 0, longLandscape = 0;
+    bool obsMode = false;  // Pro: OBS mode, [window] obs
     bool welcomed = false;
     bool debugLog = false;
     std::string licenseKey, licenseInstance;  // AirGlass Pro (Lemon Squeezy key + activation id)

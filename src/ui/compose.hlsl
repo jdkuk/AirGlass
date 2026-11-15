@@ -21,6 +21,7 @@ cbuffer ComposeCB : register(b0)
     float4 gLabelInfo;  // label alpha, glyph cx, glyph cy, glyph half size
     float4 gTv0;        // 4th button x, 4th button hover, TV capsule 0/1, -
     float4 gTv1;        // TV corner (0 br, 1 bl, 2 tr, 3 tl), TV size (0 s, 1 m, 2 l), -, -
+    float4 gMode;       // OBS mode 0/1, -, -, -
 };
 
 Texture2D<float4> tVideo : register(t0);
@@ -101,6 +102,10 @@ float SMin(float a, float b, float k)
 }
 
 float AA() { return 1.0 / max(gAppear.x, 0.01); }
+
+// OBS mode: opaque chroma-key green (#00B140) round the picture instead of glass and transparency.
+bool Obs() { return gMode.x > 0.5; }
+static const float3 kKeyGreen = float3(0.0, 177.0 / 255.0, 64.0 / 255.0);
 
 float2 SlabCenter() { return (gSlab.xy + gSlab.zw) * 0.5; }
 float2 SlabHalf() { return (gSlab.zw - gSlab.xy) * 0.5; }
@@ -285,19 +290,19 @@ float3 SlabColor(float2 p, float d)
     float vCov = saturate(0.5 - dV / AA());
     float3 glass = float3(0.0, 0.0, 0.0);
     if (vCov < 1.0)
-        glass = lerp(GlassBezel(p, d), float3(0.0, 0.0, 0.0), fs);
+        glass = Obs() ? kKeyGreen : lerp(GlassBezel(p, d), float3(0.0, 0.0, 0.0), fs);
     float3 content = float3(0.0, 0.0, 0.0);
     if (vCov > 0.0)
         content = Content(p, -1.0);
     float3 c = lerp(glass, content, vCov);
-    float edge = saturate(1.0 - abs(dV) / (1.5 * gGeom.z)) * (1.0 - fs) * step(0.0, dV);
+    float edge = saturate(1.0 - abs(dV) / (1.5 * gGeom.z)) * (1.0 - fs) * step(0.0, dV) * (1.0 - gMode.x);
     return c * (1.0 - 0.18 * edge);
 }
 
 float3 ApplyRim(float2 p, float d, float3 c)
 {
     float fs = gGeom.w;
-    if (fs >= 0.999)
+    if (fs >= 0.999 || Obs())
         return c;
     float dp = gGeom.z;
     float2 n = SlabNormal(p);
@@ -461,7 +466,7 @@ float Icons(float2 p)
 float3 ApplyPill(float2 p, float3 c)
 {
     float alpha = gPillInfo.x;
-    if (alpha <= 0.002)
+    if (alpha <= 0.002 || Obs())
         return c;
     float dp = gGeom.z * gPillInfo.y;
     float dM = PillSdf(p);
@@ -525,7 +530,7 @@ float4 PSCompose(VSOut i) : SV_Target
     float dS = sdSquircle(p - sc - float2(0.0, gShadow.x), SlabHalf(), gGeom.x);
     float sh = 1.0 - smoothstep(-gShadow.y, gShadow.y * 2.0, dS);
     float shadowA = sh * sh * gShadow.z * (1.0 - fs) * opacity;
-    float4 outc = float4(0.0, 0.0, 0.0, max(backA, shadowA));
+    float4 outc = Obs() ? float4(kKeyGreen * opacity, opacity) : float4(0.0, 0.0, 0.0, max(backA, shadowA));
 
     float d = SlabSdf(p);
     float cov = saturate(0.5 - d / AA());

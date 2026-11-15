@@ -12,6 +12,9 @@ All notable changes to AirGlass are documented here. The format is based on
   the new name straight away, without restarting AirGlass.
 - A machine-wide receiver name for IT departments: `name=` under `[receiver]` in
   `%ProgramData%\AirGlass\airglass.ini` wins over the user's setting ([Deployment](docs/deployment.md)).
+- Pro: OBS mode. Press <kbd>O</kbd> (or use the tray or window menu) for a window OBS Window Capture handles well:
+  opaque, chroma-key green (#00B140) round a plain rectangular picture, no glass, shadow or controls, and always
+  titled "AirGlass (OBS)" so the capture source finds it again. AirGlass remembers the choice.
 
 ## [1.0.5] - 2026-11-15
 

@@ -26,7 +26,7 @@ constexpr float kControlsIdleSeconds = 2.2f;
 
 struct ComposeCB {
     float view[4], slab[4], video[4], geom[4], appear[4], shadow[4], vinfo[4], pill[4], pillInfo[4], drop[4], btnX[4],
-        btnState[4], icons[4], label[4], labelInfo[4], tv0[4], tv1[4];
+        btnState[4], icons[4], label[4], labelInfo[4], tv0[4], tv1[4], mode[4];
 };
 struct ConvertCB {
     float row0[4], row1[4], row2[4], info[4];
@@ -260,6 +260,7 @@ bool GlassWindow::CreatePipeline() {
 bool GlassWindow::Create(HINSTANCE inst, HICON bigIcon, HICON smallIcon, const Options& opt) {
     opt_ = opt;
     pinned_ = opt.pinned;
+    obs_ = opt.obs;
     char env[64];
     if (GetEnvironmentVariableA("AIRGLASS_DEBUG_CONTROLS", env, sizeof(env))) debugHover_ = atoi(env);
     if (GetEnvironmentVariableA("AIRGLASS_DEBUG_FULLSCREEN", env, sizeof(env)))
@@ -308,6 +309,7 @@ bool GlassWindow::Create(HINSTANCE inst, HICON bigIcon, HICON smallIcon, const O
         shared_.dp = dp_;
         shared_.pinned = pinned_;
     }
+    ApplyObsMode();
     quit_ = false;
     renderThread_ = std::thread(&GlassWindow::RenderThread, this);
     return true;
@@ -436,16 +438,17 @@ void GlassWindow::Wake() {
 // Rendering
 
 GlassWindow::Layout GlassWindow::ComputeLayout(const RectF& slab, float fs, float dp, float aspect, int buttons,
-                                               float boost) {
+                                               float boost, bool obs) {
     Layout L;
     L.slab = slab;
     L.buttons = buttons;
     float minSide = std::max(1.0f, std::min(slab.W(), slab.H()));
     float maxSide = std::max(slab.W(), slab.H());
-    // Corner radius and glass rim grow with the window so the glass reads at any size.
+    // Corner radius and glass rim grow with the window so the glass reads at any size. OBS mode: a plain
+    // rectangular picture, so a chroma key leaves clean edges.
     float radius = std::clamp(0.060f * minSide, kRadiusDp * dp * 0.8f, kRadiusDp * dp * 2.7f);
-    L.radius = std::min(radius, minSide * 0.5f) * (1.0f - fs);
-    L.bezel = std::clamp(0.0085f * maxSide, kBezelDp * dp, kBezelDp * dp * 2.5f) * (1.0f - fs);
+    L.radius = obs ? 0.0f : std::min(radius, minSide * 0.5f) * (1.0f - fs);
+    L.bezel = obs ? 0.0f : std::clamp(0.0085f * maxSide, kBezelDp * dp, kBezelDp * dp * 2.5f) * (1.0f - fs);
     RectF inner = slab.Inflate(-L.bezel);
     L.video = FitAspect(inner, std::max(aspect, 0.05f));
     L.uiScale = std::clamp(std::min(L.video.W(), L.video.H()) / (300.0f * dp), 0.72f, 1.3f);
@@ -762,7 +765,7 @@ void GlassWindow::RenderLocked() {
 
     RectF slab{anim_.x0.x, anim_.y0.x, anim_.x1.x, anim_.y1.x};
     float fs = std::clamp(anim_.fs.x, 0.0f, 1.0f);
-    Layout L = ComputeLayout(slab, fs, s.dp, s.aspect, s.tv ? 4 : 3, s.tv ? s.tvBoost : 1.0f);
+    Layout L = ComputeLayout(slab, fs, s.dp, s.aspect, s.tv ? 4 : 3, s.tv ? s.tvBoost : 1.0f, s.obs);
 
     bool hovering = s.hoverBtn >= 0 && s.hoverBtn < L.buttons && s.controlsTarget > 0.5f;
     float dropTarget = hovering ? L.btnX[s.hoverBtn] : anim_.dropX.x;
@@ -803,6 +806,7 @@ void GlassWindow::RenderLocked() {
     Set4(cb.icons, s.fsTarget > 0.5f ? 1.0f : 0.0f, s.pinned ? 1.0f : 0.0f, L.iconHalf, L.stroke);
     Set4(cb.tv0, L.btnX[3], hv[3], s.tv ? 1.0f : 0.0f, 0);
     Set4(cb.tv1, float(s.tvCorner), float(s.tvSize), 0, 0);
+    Set4(cb.mode, s.obs ? 1.0f : 0.0f, 0, 0, 0);
     float gs = std::min(L.video.W(), L.video.H()) * 0.12f;
     float gcx = L.video.CX(), gcy = L.video.CY() - L.video.H() * 0.05f;
 
@@ -1260,6 +1264,36 @@ void GlassWindow::SetPinned(bool pinned) {
     if (onOptionsChanged) onOptionsChanged();
 }
 
+void GlassWindow::SetPro(bool pro) {
+    pro_ = pro;
+    ApplyObsMode();  // the free edition never shows Pro-only looks, even if they were chosen during the trial
+}
+
+void GlassWindow::ToggleObsMode() {
+    if (!pro_) {
+        if (onUpgradeRequested) onUpgradeRequested(kProObs);
+        return;
+    }
+    obs_ = !obs_;
+    opt_.obs = obs_;
+    LOGI("obs: %s", obs_ ? "on - chroma-key green window titled \"AirGlass (OBS)\"" : "off");
+    ApplyObsMode();
+    if (onOptionsChanged) onOptionsChanged();
+}
+
+void GlassWindow::ApplyObsMode() {
+    bool on = ObsMode();
+    {
+        std::lock_guard<std::mutex> lk(stateMu_);
+        if (shared_.obs == on) return;
+        shared_.obs = on;
+    }
+    // A fixed title, so an OBS Window Capture source finds the window again in every session.
+    if (hwnd_) SetWindowTextW(hwnd_, on ? L"AirGlass (OBS)" : L"AirGlass");
+    UpdateControls();
+    Wake();
+}
+
 void GlassWindow::RememberSize() {
     if (fullscreen_) return;
     RectF s = hasAnimTarget_ ? animTarget_ : CurrentSlabScreen();
@@ -1712,7 +1746,7 @@ void GlassWindow::UpdateControls() {
     if (!visible_ || debugHover_ >= 0) return;
     bool mouseWants = mouseInside_ &&
                       (NowSeconds() - lastMouseMove_ < kControlsIdleSeconds || overPill_ || pressedBtn_ >= 0);
-    bool want = !dismissing_ && !tvHiding_ && (mouseWants || tvHighlight_ >= 0);
+    bool want = !dismissing_ && !tvHiding_ && !ObsMode() && (mouseWants || tvHighlight_ >= 0);
     if (want != controlsShown_) {
         controlsShown_ = want;
         {
@@ -1753,6 +1787,7 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING | (pinned_ ? MF_CHECKED : 0), 1, L"Keep on top\tP");
     AppendMenuW(m, MF_STRING | (fullscreen_ ? MF_CHECKED : 0), 2, L"Full screen\tF");
+    AppendMenuW(m, MF_STRING | (ObsMode() ? MF_CHECKED : 0), 4, pro_ ? L"OBS mode\tO" : L"OBS mode (Pro)…");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, 3, L"Disconnect");
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd_, nullptr);
@@ -1760,6 +1795,7 @@ void GlassWindow::ShowContextMenu(POINT pt) {
     if (cmd == 1) SetPinned(!pinned_);
     if (cmd == 2) ActivateButton(2);
     if (cmd == 3) ActivateButton(0);
+    if (cmd == 4) ToggleObsMode();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2040,6 +2076,9 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             } else if (onScreenshotKey) {
                 onScreenshotKey();
             }
+            return 0;
+        case 'O':  // Pro: OBS mode
+            ToggleObsMode();
             return 0;
         case 'R':  // Pro: start/stop recording
             if (!sessionLive_) return 0;
