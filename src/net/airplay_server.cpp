@@ -4,6 +4,7 @@
 
 #include "crypto/crypto.h"
 #include "crypto/fairplay.h"
+#include "crypto/srp.h"
 #include "net/audio_stream.h"
 #include "net/bplist.h"
 #include "net/dacp.h"
@@ -16,6 +17,7 @@ namespace {
 
 constexpr const char* kSourceVersion = "220.68";
 constexpr const char* kModel = "AppleTV3,2";
+constexpr int kPinTries = 3;  // wrong codes in a row before a lock-out (30 s, doubling up to an hour)
 
 struct Request {
     std::string method, uri, protocol;
@@ -118,8 +120,9 @@ std::string ReceiverInfo::MacHex() const {
 std::string ReceiverInfo::PkHex() const { return HexEncode(edPub, 32); }
 
 std::vector<std::pair<std::string, std::string>> ReceiverInfo::AirPlayTxt() const {
+    // A required code is advertised as UxPlay's -pin does: "pw" true here, and status flags 0x8c on RAOP.
     return {{"deviceid", DeviceId()}, {"features", FeaturesString(features)},
-            {"pw", "false"},          {"flags", "0x4"},
+            {"pw", pin ? "true" : "false"}, {"flags", "0x4"},
             {"model", kModel},        {"pk", PkHex()},
             {"pi", pi},               {"srcvers", kSourceVersion},
             {"vv", "2"}};
@@ -128,8 +131,8 @@ std::vector<std::pair<std::string, std::string>> ReceiverInfo::AirPlayTxt() cons
 std::vector<std::pair<std::string, std::string>> ReceiverInfo::RaopTxt() const {
     return {{"ch", "2"},       {"cn", "0,1,2,3"},      {"da", "true"},    {"et", "0,3,5"},
             {"vv", "2"},       {"ft", FeaturesString(features)}, {"am", kModel}, {"md", "0,1,2"},
-            {"rhd", "5.6.0.0"}, {"pw", "false"},       {"sr", "44100"},   {"ss", "16"},
-            {"sv", "false"},   {"tp", "UDP"},          {"txtvers", "1"},  {"sf", "0x4"},
+            {"rhd", "5.6.0.0"}, {"pw", pin ? "true" : "false"}, {"sr", "44100"}, {"ss", "16"},
+            {"sv", "false"},   {"tp", "UDP"},          {"txtvers", "1"},  {"sf", pin ? "0x8c" : "0x4"},
             {"vs", kSourceVersion}, {"vn", "65537"},   {"pk", PkHex()}};
 }
 
@@ -169,6 +172,8 @@ private:
 
     void Info(const Request& req, Response& resp);
     void PairSetup(const Request& req, Response& resp);
+    void PairPinStart(const Request& req, Response& resp);
+    void PairSetupPin(const Request& req, Response& resp);
     void PairVerify(const Request& req, Response& resp);
     void FpSetup(const Request& req, Response& resp);
     void Setup(const Request& req, Response& resp);
@@ -207,6 +212,12 @@ private:
     uint8_t aesKey_[16]{}, aesIv_[16]{};
     std::string devName_, devModel_, devId_;
     bool admitted_ = false;  // the allow-list said yes for this connection
+    // PIN pairing: the SRP run for the code on screen, and the key the sender sent once it got the code right.
+    std::unique_ptr<crypto::srp::Server> pinSrp_;
+    std::string pinUser_;
+    bool pinKeyKnown_ = false;
+    uint8_t pinKey_[32]{};
+    bool keyTrusted_ = false;  // pair-verify's key paired with a code (now or before)
 
     std::unique_ptr<NtpClient> ntp_;
     std::unique_ptr<MirrorStream> mirror_;
@@ -239,6 +250,7 @@ void AirPlayServer::Connection::Run() {
         if (resp.closeAfter) break;
     }
     LOGI("rtsp[%llu]: connection ended%s", (unsigned long long)id_, kicked_ ? " (disconnected by receiver)" : "");
+    srv_->PinDone(id_);
     StopStreams();
     done_ = true;
 }
@@ -338,6 +350,8 @@ void AirPlayServer::Connection::Handle(const Request& req, Response& resp) {
     const std::string& path = req.uri;
     if (m == "POST") {
         if (path == "/pair-setup") PairSetup(req, resp);
+        else if (path == "/pair-pin-start") PairPinStart(req, resp);
+        else if (path == "/pair-setup-pin") PairSetupPin(req, resp);
         else if (path == "/pair-verify") PairVerify(req, resp);
         else if (path == "/fp-setup") FpSetup(req, resp);
         else if (path == "/feedback" || path == "/audioMode") {}
@@ -373,7 +387,8 @@ void AirPlayServer::Connection::Handle(const Request& req, Response& resp) {
 }
 
 void AirPlayServer::Connection::Info(const Request& req, Response& resp) {
-    const ReceiverInfo& ri = srv_->info_;
+    ReceiverInfo ri = srv_->info_;
+    ri.pin = srv_->PinRequired();
     bool hasCseq = req.Header("CSeq") != nullptr;
     std::string ct = req.ContentType();
     bool txtAirPlay = false, txtRaop = false;
@@ -459,12 +474,112 @@ void AirPlayServer::Connection::Info(const Request& req, Response& resp) {
 
 void AirPlayServer::Connection::PairSetup(const Request& req, Response& resp) {
     if (req.body.size() != 32) {
-        LOGE("rtsp[%llu]: pair-setup with %zu bytes (PIN/HomeKit pairing is not supported)", (unsigned long long)id_,
+        LOGE("rtsp[%llu]: pair-setup with %zu bytes (HomeKit pairing is not supported)", (unsigned long long)id_,
              req.body.size());
         return;
     }
     resp.SetOctets(srv_->info_.edPub, 32);
     pair_ = PairState::Setup;
+}
+
+// PIN pairing, the legacy "AirPlay Code" exchange (as UxPlay's -pin): pair-pin-start puts a code on the PC; three
+// pair-setup-pin steps then run SRP-6a with that code as the password and swap Ed25519 keys under a key only a
+// sender that typed the right code has. The sender then pair-verifies with that key, as usual, now and next time.
+void AirPlayServer::Connection::PairPinStart(const Request& req, Response& resp) {
+    int wait = 0;
+    std::string code = srv_->IssuePin(id_, &wait);
+    if (code.empty()) {
+        LOGW("rtsp[%llu]: pair-pin-start refused: too many wrong codes, try again in %d s", (unsigned long long)id_,
+             wait);
+        resp.code = 403;
+        resp.reason = "Forbidden";
+        return;
+    }
+    LOGI("rtsp[%llu]: pair-pin-start: showing a code on the PC%s", (unsigned long long)id_,
+         srv_->PinRequired() ? "" : " (the sender asked for one)");
+    if (srv_->ev_.pinCode) srv_->ev_.pinCode(code);
+    crypto::SecureWipe(code);
+}
+
+void AirPlayServer::Connection::PairSetupPin(const Request& req, Response& resp) {
+    auto refuse = [&](const char* why) {
+        LOGW("rtsp[%llu]: pair-setup-pin: %s", (unsigned long long)id_, why);
+        resp.code = 470;
+        resp.reason = "Connection Authorization Required";
+    };
+    Plist p;
+    if (req.ContentType().find("application/x-apple-binary-plist") == std::string::npos ||
+        !Plist::Parse(req.body.data(), req.body.size(), p))
+        return refuse("not a binary plist");
+    auto data = [&](const char* k) -> const std::vector<uint8_t>* {
+        const Plist* v = p.Get(k);
+        return v && v->type() == Plist::Type::Data ? &v->AsData() : nullptr;
+    };
+    const Plist* method = p.Get("method");
+    const Plist* user = p.Get("user");
+    if (method && user && method->type() == Plist::Type::String && user->type() == Plist::Type::String) {
+        // Step 1: the sender names itself; answer with the salt and our SRP public key for the code on screen.
+        if (method->AsString() != "pin") return refuse("unsupported method");
+        if (user->AsString().empty() || user->AsString().size() > 64) return refuse("bad user id");
+        std::string code;
+        if (!srv_->TakePin(id_, &code)) return refuse("no code is showing (not asked for, expired, or used)");
+        pinUser_ = user->AsString();
+        pinSrp_ = std::make_unique<crypto::srp::Server>();
+        pinSrp_->Start(pinUser_, code);
+        crypto::SecureWipe(code);
+        Plist d = Plist::Dict();
+        d.Set("pk", Plist::Data(pinSrp_->PublicKey().data(), pinSrp_->PublicKey().size()));
+        d.Set("salt", Plist::Data(pinSrp_->Salt().data(), pinSrp_->Salt().size()));
+        resp.SetPlist(d);
+        LOGI("rtsp[%llu]: pair-setup-pin from %s", (unsigned long long)id_, pinUser_.c_str());
+        return;
+    }
+    const std::vector<uint8_t>* pk = data("pk");
+    const std::vector<uint8_t>* proof = data("proof");
+    if (pk && proof) {
+        // Step 2: the sender's SRP public key and proof. A wrong code fails here, once: the next try gets a new code.
+        if (!pinSrp_ || !pinSrp_->Started()) return refuse("proof without a code");
+        std::vector<uint8_t> m2;
+        bool right = pinSrp_->Verify(*pk, *proof, m2);
+        srv_->PinTried(right);
+        if (!right) {
+            pinSrp_.reset();
+            srv_->PinDone(id_);
+            return refuse("wrong code");
+        }
+        Plist d = Plist::Dict();
+        d.Set("proof", Plist::Data(m2.data(), m2.size()));
+        resp.SetPlist(d);
+        return;
+    }
+    const std::vector<uint8_t>* epk = data("epk");
+    const std::vector<uint8_t>* tag = data("authTag");
+    if (epk && tag) {
+        // Step 3: the sender's Ed25519 key, sealed with the session key; ours goes back the same way.
+        if (!pinSrp_ || pinSrp_->Key().empty()) return refuse("keys before the code was checked");
+        if (epk->size() != 32 || tag->size() != 16) return refuse("bad key message");
+        uint8_t key[16], nonce[16], theirs[32], ours[32], ourTag[16];
+        crypto::srp::PinSetupCipher(pinSrp_->Key(), key, nonce);
+        pinSrp_.reset();
+        nonce[15]++;
+        bool ok = crypto::AesGcmDecrypt(key, nonce, 16, epk->data(), theirs, 32, tag->data());
+        nonce[15]++;
+        ok = ok && crypto::AesGcmEncrypt(key, nonce, 16, srv_->info_.edPub, ours, 32, ourTag);
+        crypto::SecureWipe(key, sizeof(key));
+        if (!ok) return refuse("key message failed its check");
+        std::memcpy(pinKey_, theirs, 32);
+        pinKeyKnown_ = true;
+        srv_->AddPaired(theirs);
+        LOGI("rtsp[%llu]: paired with the code (%s)", (unsigned long long)id_, pinUser_.c_str());
+        srv_->PinDone(id_);
+        if (srv_->ev_.pinPaired) srv_->ev_.pinPaired(HexEncode(theirs, 32), pinUser_);
+        Plist d = Plist::Dict();
+        d.Set("epk", Plist::Data(ours, 32));
+        d.Set("authTag", Plist::Data(ourTag, 16));
+        resp.SetPlist(d);
+        return;
+    }
+    refuse("unexpected message");
 }
 
 void AirPlayServer::Connection::DeriveKey(const char* salt, uint8_t out[16]) const {
@@ -500,17 +615,33 @@ bool AirPlayServer::Connection::SenderGone() {
 }
 
 void AirPlayServer::Connection::PairVerify(const Request& req, Response& resp) {
-    if (pair_ != PairState::Setup && pair_ != PairState::Handshake) {
+    const auto& b = req.body;
+    if (b.size() < 4) return;
+    // Whether the Ed25519 key in step 1 paired with a code (here just now, or earlier). Such a sender may come
+    // straight to pair-verify, without pair-setup.
+    if (b[0] == 1 && b.size() == 4 + 32 + 32) {
+        const uint8_t* ed = b.data() + 36;
+        keyTrusted_ = (pinKeyKnown_ && std::memcmp(pinKey_, ed, 32) == 0) || srv_->IsPaired(ed);
+        if (srv_->PinRequired() && !keyTrusted_) {
+            // Not paired with a code yet (or forgotten here): 470 asks the sender for the code.
+            LOGI("rtsp[%llu]: pair-verify from a sender that hasn't paired with the code; asking for it",
+                 (unsigned long long)id_);
+            resp.code = 470;
+            resp.reason = "Connection Authorization Required";
+            return;
+        }
+    }
+    bool returning = b[0] == 1 && keyTrusted_ && pair_ == PairState::Initial;
+    if (pair_ != PairState::Setup && pair_ != PairState::Handshake && !returning) {
         LOGW("rtsp[%llu]: pair-verify before pair-setup", (unsigned long long)id_);
         return;
     }
-    const auto& b = req.body;
-    if (b.size() < 4) return;
     const ReceiverInfo& ri = srv_->info_;
     if (b[0] == 1) {
         if (b.size() != 4 + 32 + 32) return;
+        const uint8_t* ed = b.data() + 36;
         std::memcpy(ecdhTheirs_, b.data() + 4, 32);
-        std::memcpy(edTheirs_, b.data() + 36, 32);
+        std::memcpy(edTheirs_, ed, 32);
         uint8_t priv[32];
         crypto::RandomBytes(priv, 32);
         crypto::X25519PublicKey(ecdhOurs_, priv);
@@ -603,6 +734,17 @@ void AirPlayServer::Connection::Setup(const Request& req, Response& resp) {
         const std::string* ua = req.Header("User-Agent");
         LOGI("rtsp[%llu]: session from \"%s\" (%s %s, %s)", (unsigned long long)id_, devName_.c_str(), devModel_.c_str(),
              str("osVersion").c_str(), ua ? ua->c_str() : "?");
+        // A required code: only a sender that pair-verified with a key that paired with the code gets a session.
+        if (srv_->PinRequired() && !(pair_ == PairState::Finished && keyTrusted_)) {
+            LOGI("rtsp[%llu]: \"%s\" hasn't paired with the code; turning it away", (unsigned long long)id_,
+                 devName_.c_str());
+            resp.code = 470;
+            resp.reason = "Connection Authorization Required";
+            resp.closeAfter = true;
+            return;
+        }
+        if (pinKeyKnown_ && srv_->ev_.pinPaired && !devName_.empty())
+            srv_->ev_.pinPaired(HexEncode(pinKey_, 32), devName_);  // now with the name people know it by
         // Allow-list: decided before any keys, timing or streams exist, so a sender that is turned away gets a
         // clean refusal (and shows an error) instead of a half-built session.
         if (!admitted_ && srv_->ev_.admit) {
@@ -993,6 +1135,94 @@ void AirPlayServer::SetName(const std::string& name) {
 std::string AirPlayServer::Name() {
     std::lock_guard<std::mutex> lk(nameMu_);
     return name_;
+}
+
+void AirPlayServer::SetPairedKeys(const std::vector<std::string>& keysHex) {
+    std::lock_guard<std::mutex> lk(pinMu_);
+    pairedKeys_.clear();
+    for (const std::string& k : keysHex) {
+        std::string lower;
+        for (char c : k) lower += char(tolower(static_cast<unsigned char>(c)));
+        if (lower.size() == 64) pairedKeys_.push_back(lower);
+    }
+}
+
+void AirPlayServer::SetTestPin(const std::string& pin) {
+    std::lock_guard<std::mutex> lk(pinMu_);
+    testPin_ = pin;
+}
+
+std::string AirPlayServer::IssuePin(uint64_t conn, int* lockedFor) {
+    std::lock_guard<std::mutex> lk(pinMu_);
+    double now = NowSeconds();
+    if (now < pinLockedUntil_) {
+        *lockedFor = int(std::ceil(pinLockedUntil_ - now));
+        return "";
+    }
+    if (!testPin_.empty()) {
+        pinCode_ = testPin_;
+    } else {
+        uint16_t r;
+        do crypto::RandomBytes(&r, sizeof(r));
+        while (r >= 60000);  // uniform over 0000-9999
+        char b[8];
+        snprintf(b, sizeof(b), "%04u", unsigned(r % 10000));
+        pinCode_ = b;
+        crypto::SecureWipe(b, sizeof(b));
+    }
+    pinConn_ = conn;
+    pinIssued_ = now;
+    return pinCode_;
+}
+
+bool AirPlayServer::TakePin(uint64_t conn, std::string* code) {
+    std::lock_guard<std::mutex> lk(pinMu_);
+    bool ok = !pinCode_.empty() && NowSeconds() - pinIssued_ < kPinCodeSeconds;
+    if (ok) {
+        *code = pinCode_;
+        pinConn_ = conn;  // the card stays up while this sender's user types the code
+    }
+    crypto::SecureWipe(pinCode_);
+    return ok;
+}
+
+void AirPlayServer::PinTried(bool right) {
+    std::lock_guard<std::mutex> lk(pinMu_);
+    if (right) {
+        pinWrong_ = 0;
+        pinLockSeconds_ = 0;
+        return;
+    }
+    if (++pinWrong_ < kPinTries) return;
+    pinWrong_ = 0;
+    pinLockSeconds_ = pinLockSeconds_ ? std::min(pinLockSeconds_ * 2, 3600) : 30;
+    pinLockedUntil_ = NowSeconds() + pinLockSeconds_;
+    LOGW("rtsp: %d wrong codes in a row; no new codes for %d s", kPinTries, pinLockSeconds_);
+}
+
+void AirPlayServer::PinDone(uint64_t conn) {
+    bool hide = false;
+    {
+        std::lock_guard<std::mutex> lk(pinMu_);
+        if (conn && pinConn_ == conn) {
+            crypto::SecureWipe(pinCode_);
+            pinConn_ = 0;
+            hide = true;
+        }
+    }
+    if (hide && ev_.pinCode) ev_.pinCode("");
+}
+
+bool AirPlayServer::IsPaired(const uint8_t key[32]) {
+    std::string hex = HexEncode(key, 32);
+    std::lock_guard<std::mutex> lk(pinMu_);
+    return std::find(pairedKeys_.begin(), pairedKeys_.end(), hex) != pairedKeys_.end();
+}
+
+void AirPlayServer::AddPaired(const uint8_t key[32]) {
+    std::string hex = HexEncode(key, 32);
+    std::lock_guard<std::mutex> lk(pinMu_);
+    if (std::find(pairedKeys_.begin(), pairedKeys_.end(), hex) == pairedKeys_.end()) pairedKeys_.push_back(hex);
 }
 
 bool AirPlayServer::Start(const ReceiverInfo& info, uint16_t preferredPort, FrameSink* video, AudioOutput* audio,

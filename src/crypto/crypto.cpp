@@ -18,6 +18,25 @@ void RandomBytes(void* out, size_t n) {
     BCryptGenRandom(nullptr, static_cast<PUCHAR>(out), ULONG(n), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
 }
 
+void SecureWipe(void* p, size_t n) { SecureZeroMemory(p, n); }
+
+void Sha1Digest(const void* data, size_t n, uint8_t out[20]) {
+    static BCRYPT_ALG_HANDLE alg = [] {
+        BCRYPT_ALG_HANDLE h = nullptr;
+        if (BCryptOpenAlgorithmProvider(&h, BCRYPT_SHA1_ALGORITHM, nullptr, 0) != 0) h = nullptr;
+        return h;
+    }();
+    std::memset(out, 0, 20);
+    BCRYPT_HASH_HANDLE h = nullptr;
+    if (!alg || BCryptCreateHash(alg, &h, nullptr, 0, nullptr, 0, 0) != 0) {
+        LOGE("crypto: SHA-1 unavailable");
+        return;
+    }
+    BCryptHashData(h, (PUCHAR)data, ULONG(n), 0);
+    BCryptFinishHash(h, out, 20, 0);
+    BCryptDestroyHash(h);
+}
+
 Sha512::Sha512() { sha512_init(reinterpret_cast<sha512_context*>(ctx_)); }
 
 void Sha512::Update(const void* data, size_t n) {
@@ -199,6 +218,122 @@ bool AesCbc::Encrypt(const uint8_t iv[16], const uint8_t* in, uint8_t* out, size
 }
 
 // ---------------------------------------------------------------------------------------------
+// AES-128-GCM (NIST SP 800-38D): CTR and the tag block via CNG's ECB, GHASH here.
+
+namespace {
+struct Block128 {
+    uint64_t hi = 0, lo = 0;  // big-endian halves
+    static Block128 Load(const uint8_t* p) { return {RdBE64(p), RdBE64(p + 8)}; }
+    void Store(uint8_t* p) const {
+        WrBE64(p, hi);
+        WrBE64(p + 8, lo);
+    }
+};
+
+// X * Y in GF(2^128) with GCM's bit order (algorithm 1 of SP 800-38D); masks instead of branches.
+Block128 GfMul(Block128 x, Block128 y) {
+    Block128 z, v = y;
+    for (int i = 0; i < 128; ++i) {
+        uint64_t bit = i < 64 ? (x.hi >> (63 - i)) & 1 : (x.lo >> (127 - i)) & 1;
+        uint64_t m = 0 - bit;
+        z.hi ^= v.hi & m;
+        z.lo ^= v.lo & m;
+        uint64_t r = 0 - (v.lo & 1);
+        v.lo = (v.lo >> 1) | (v.hi << 63);
+        v.hi = (v.hi >> 1) ^ (0xE100000000000000ull & r);
+    }
+    return z;
+}
+
+// Y = (Y ^ block) * H for each 16-byte block of data, the last one zero-padded.
+void Ghash(Block128& y, Block128 h, const uint8_t* data, size_t n) {
+    for (size_t off = 0; off < n; off += 16) {
+        uint8_t b[16] = {};
+        std::memcpy(b, data + off, std::min<size_t>(16, n - off));
+        Block128 x = Block128::Load(b);
+        y.hi ^= x.hi;
+        y.lo ^= x.lo;
+        y = GfMul(y, h);
+    }
+}
+
+bool Gcm(bool encrypt, const uint8_t key[16], const uint8_t* nonce, size_t nonceLen, const uint8_t* in, uint8_t* out,
+         size_t n, uint8_t tag[16]) {
+    if (nonceLen == 0) return false;
+    BCRYPT_KEY_HANDLE k = static_cast<BCRYPT_KEY_HANDLE>(MakeKey(EcbAlg(), key));
+    if (!k) return false;
+    // Blocks to encrypt: 0 (for H), J0 (for the tag), then the counter blocks.
+    size_t blocks = (n + 15) / 16;
+    std::vector<uint8_t> ctr((blocks + 2) * 16, 0), ks(ctr.size());
+    ULONG done = 0;
+    bool ok = BCryptEncrypt(k, ctr.data(), 16, nullptr, nullptr, 0, ks.data(), 16, &done, 0) == 0;
+    Block128 h = Block128::Load(ks.data());
+    uint8_t j0[16] = {};
+    if (nonceLen == 12) {
+        std::memcpy(j0, nonce, 12);
+        j0[15] = 1;
+    } else {
+        Block128 y;
+        Ghash(y, h, nonce, nonceLen);
+        uint8_t len[16] = {};
+        WrBE64(len + 8, uint64_t(nonceLen) * 8);
+        Ghash(y, h, len, 16);
+        y.Store(j0);
+    }
+    std::memcpy(&ctr[16], j0, 16);
+    uint32_t c = RdBE32(j0 + 12);
+    for (size_t b = 0; b < blocks; ++b) {
+        std::memcpy(&ctr[(b + 2) * 16], j0, 12);
+        WrBE32(&ctr[(b + 2) * 16 + 12], ++c);  // inc32
+    }
+    ok = ok && BCryptEncrypt(k, ctr.data() + 16, ULONG(ctr.size() - 16), nullptr, nullptr, 0, ks.data() + 16,
+                             ULONG(ks.size() - 16), &done, 0) == 0;
+    BCryptDestroyKey(k);
+    if (!ok) return false;
+
+    // CTR both ways; the tag covers the ciphertext, and decrypted text is only released once the tag matches.
+    std::vector<uint8_t> x(n);
+    for (size_t i = 0; i < n; ++i) x[i] = uint8_t(in[i] ^ ks[32 + i]);
+    const uint8_t* cipher = encrypt ? x.data() : in;
+    Block128 s;
+    Ghash(s, h, cipher, n);
+    uint8_t len[16] = {};
+    WrBE64(len + 8, uint64_t(n) * 8);
+    Ghash(s, h, len, 16);
+    uint8_t t[16];
+    s.Store(t);
+    for (int i = 0; i < 16; ++i) t[i] ^= ks[16 + i];  // E(K, J0)
+    bool good = true;
+    if (encrypt) {
+        std::memcpy(tag, t, 16);
+    } else {
+        uint8_t diff = 0;
+        for (int i = 0; i < 16; ++i) diff |= uint8_t(t[i] ^ tag[i]);
+        good = diff == 0;
+    }
+    if (n) {
+        if (good) std::memcpy(out, x.data(), n);
+        else std::memset(out, 0, n);
+        SecureZeroMemory(x.data(), n);
+    }
+    SecureZeroMemory(ks.data(), ks.size());
+    return good;
+}
+}  // namespace
+
+bool AesGcmEncrypt(const uint8_t key[16], const uint8_t* nonce, size_t nonceLen, const uint8_t* in, uint8_t* out,
+                   size_t n, uint8_t tag[16]) {
+    return Gcm(true, key, nonce, nonceLen, in, out, n, tag);
+}
+
+bool AesGcmDecrypt(const uint8_t key[16], const uint8_t* nonce, size_t nonceLen, const uint8_t* in, uint8_t* out,
+                   size_t n, const uint8_t tag[16]) {
+    uint8_t t[16];
+    std::memcpy(t, tag, 16);
+    return Gcm(false, key, nonce, nonceLen, in, out, n, t);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Known-answer tests
 
 static std::vector<uint8_t> H(const char* hex) {
@@ -282,6 +417,35 @@ bool SelfTest() {
         std::vector<uint8_t> out(cbcCt.size());
         c.Decrypt(iv.data(), cbcCt.data(), out.data(), out.size());
         ok &= Check("aes-cbc", out.data(), pt);
+    }
+
+    // SHA-1("abc") (FIPS 180-2)
+    uint8_t h1[20];
+    Sha1Digest("abc", 3, h1);
+    ok &= Check("sha1", h1, H("a9993e364706816aba3e25717850c26c9cd0d89d"));
+
+    // AES-128-GCM: SP 800-38D / McGrew-Viega test case 2 (96-bit nonce), and a 16-byte nonce as pair-setup-pin
+    // uses (cross-checked with Python's cryptography package), both ways and with a forged tag.
+    {
+        uint8_t zero[16] = {}, ct[16], tag[16];
+        AesGcmEncrypt(zero, zero, 12, zero, ct, 16, tag);
+        ok &= Check("aes-gcm tc2 ct", ct, H("0388dace60b6a392f328c2b971b2fe78"));
+        ok &= Check("aes-gcm tc2 tag", tag, H("ab6e47d42cec13bdf53a67b21257bddf"));
+        auto gk = H("000102030405060708090a0b0c0d0e0f"), gn = H("101112131415161718191a1b1c1d1e1f");
+        auto gp = H("202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f");
+        uint8_t c2[32], p2[32], t2[16];
+        AesGcmEncrypt(gk.data(), gn.data(), 16, gp.data(), c2, 32, t2);
+        ok &= Check("aes-gcm nonce16 ct", c2, H("e5bfd595599702affe31e9a98d0201f8c5cc12ac593391cf91bfbdad7f7e4ddf"));
+        ok &= Check("aes-gcm nonce16 tag", t2, H("3fd958f0e3832fe2a020cab24a5b7c82"));
+        if (!AesGcmDecrypt(gk.data(), gn.data(), 16, c2, p2, 32, t2) || std::memcmp(p2, gp.data(), 32) != 0) {
+            LOGE("selftest aes-gcm decrypt FAILED");
+            ok = false;
+        }
+        t2[0] ^= 1;
+        if (AesGcmDecrypt(gk.data(), gn.data(), 16, c2, p2, 32, t2)) {
+            LOGE("selftest aes-gcm accepted a bad tag");
+            ok = false;
+        }
     }
 
     LOGI("crypto self-test %s", ok ? "passed" : "FAILED");

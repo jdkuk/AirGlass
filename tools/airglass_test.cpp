@@ -6,6 +6,8 @@
 //   airglass_test music <alac.m4a> [--art a.jpg] [--pause-at S] [--pause-for S] [--linger S] [--port P]
 //                                           audio-only sender (Music app): ALAC + metadata + DACP remote
 //   airglass_test resampler                 resampler quality vs. the old linear interpolation
+//   airglass_test srp                       SRP-6a for PIN pairing: RFC 5054 vectors and the AirPlay variant
+//   airglass_test pin <code> [--port P]     PIN pairing end to end (receiver started with AIRGLASS_TEST_PIN=<code>)
 //   airglass_test record <h264.mp4> <dir>   Pro recorder: picture + sound in sync, sound starting late, no sound
 //   airglass_test resolve <instance> <type> one-shot mDNS SRV lookup
 //   airglass_test license activate|validate <key> <pc name|instance id>
@@ -17,6 +19,7 @@
 
 #include "crypto/crypto.h"
 #include "crypto/fairplay.h"
+#include "crypto/srp.h"
 #include "license.h"
 #include "media/recorder.h"
 #include "media/resampler.h"
@@ -365,6 +368,9 @@ struct SenderSession {
     Rtsp rtsp;
     std::string host;
     uint8_t aesKey[16]{}, eiv[16]{};
+    uint8_t shared[32]{};             // pair-verify's ECDH secret
+    std::vector<uint8_t> serverEdPk;  // from /info
+    int lastCode = 0;                 // status of the last request (the one that failed, on failure)
     uint16_t ntpPort = 0;
     SOCKET ntpSock = INVALID_SOCKET;
     std::atomic<bool> stopNtp{false};
@@ -379,43 +385,65 @@ struct SenderSession {
     }
     std::string Url() const { return "rtsp://" + host + "/1234567890"; }
     bool Open(const std::string& h, uint16_t port, bool mirroring, const char* deviceName);
+    // The steps of Open, for the PIN test: connect + GET /info; pair-setup; pair-verify with an Ed25519 key;
+    // FairPlay + the first SETUP (session key in aesKey).
+    bool Connect(const std::string& h, uint16_t port);
+    bool PairSetup(const uint8_t edPub[32]);
+    bool PairVerify(const uint8_t edPub[32], const uint8_t edPriv[64]);
+    bool Session(bool mirroring, const char* deviceName);
 };
 
-bool SenderSession::Open(const std::string& h, uint16_t port, bool mirroring, const char* deviceName) {
-    auto fail = [](const char* m) {
-        Fail(m);
-        return false;
-    };
-    host = h;
-    if (!rtsp.Connect(host, port)) return fail("connect");
-    std::vector<uint8_t> resp;
+static bool Failed(const char* m) {
+    Fail(m);
+    return false;
+}
 
-    int code = rtsp.Request("GET", "/info", "", {}, resp);
+bool SenderSession::Open(const std::string& h, uint16_t port, bool mirroring, const char* deviceName) {
+    uint8_t cSeed[32], cEdPub[32], cEdPriv[64];
+    crypto::RandomBytes(cSeed, 32);
+    crypto::Ed25519KeypairFromSeed(cSeed, cEdPub, cEdPriv);
+    if (!Connect(h, port) || !PairSetup(cEdPub)) return false;
+    if (!PairVerify(cEdPub, cEdPriv)) return Failed("pair-verify");
+    printf("[pair] pair-setup + pair-verify OK\n");
+    return Session(mirroring, deviceName) || Failed("SETUP 1");
+}
+
+bool SenderSession::Connect(const std::string& h, uint16_t port) {
+    host = h;
+    if (!rtsp.Connect(host, port)) return Failed("connect");
+    std::vector<uint8_t> resp;
+    int code = lastCode = rtsp.Request("GET", "/info", "", {}, resp);
     Plist info;
-    if (code != 200 || !Plist::Parse(resp.data(), resp.size(), info)) return fail("GET /info");
+    if (code != 200 || !Plist::Parse(resp.data(), resp.size(), info)) return Failed("GET /info");
     printf("[info] name=%s model=%s features=0x%llx\n", info.Get("name")->AsString().c_str(),
            info.Get("model")->AsString().c_str(), (unsigned long long)info.Get("features")->AsUInt());
     if (const Plist* fmts = info.Get("audioFormats"))
         for (const Plist& f : fmts->Items())
             printf("[info] audioFormats type %llu: input 0x%llx\n", (unsigned long long)f.Get("type")->AsUInt(),
                    (unsigned long long)f.Get("audioInputFormats")->AsUInt());
-    std::vector<uint8_t> serverEdPk = info.Get("pk")->AsData();
+    serverEdPk = info.Get("pk")->AsData();
+    return serverEdPk.size() == 32 || Failed("/info pk");
+}
 
-    uint8_t cSeed[32], cEdPub[32], cEdPriv[64];
-    crypto::RandomBytes(cSeed, 32);
-    crypto::Ed25519KeypairFromSeed(cSeed, cEdPub, cEdPriv);
-    code = rtsp.Request("POST", "/pair-setup", "application/octet-stream", std::vector<uint8_t>(cEdPub, cEdPub + 32), resp);
+bool SenderSession::PairSetup(const uint8_t edPub[32]) {
+    std::vector<uint8_t> resp;
+    int code = lastCode =
+        rtsp.Request("POST", "/pair-setup", "application/octet-stream", std::vector<uint8_t>(edPub, edPub + 32), resp);
     if (code != 200 || resp.size() != 32 || std::memcmp(resp.data(), serverEdPk.data(), 32) != 0)
-        return fail("pair-setup");
+        return Failed("pair-setup");
+    return true;
+}
 
-    uint8_t cX[32], cXPub[32], shared[32];
+bool SenderSession::PairVerify(const uint8_t cEdPub[32], const uint8_t cEdPriv[64]) {
+    std::vector<uint8_t> resp;
+    uint8_t cX[32], cXPub[32];
     crypto::RandomBytes(cX, 32);
     crypto::X25519PublicKey(cXPub, cX);
     std::vector<uint8_t> pv = {1, 0, 0, 0};
     pv.insert(pv.end(), cXPub, cXPub + 32);
     pv.insert(pv.end(), cEdPub, cEdPub + 32);
-    code = rtsp.Request("POST", "/pair-verify", "application/octet-stream", pv, resp);
-    if (code != 200 || resp.size() != 96) return fail("pair-verify 1");
+    int code = lastCode = rtsp.Request("POST", "/pair-verify", "application/octet-stream", pv, resp);
+    if (code != 200 || resp.size() != 96) return false;  // the PIN test expects some of these; Open reports it
     uint8_t sXPub[32];
     std::memcpy(sXPub, resp.data(), 32);
     crypto::X25519(shared, cX, sXPub);
@@ -440,7 +468,7 @@ bool SenderSession::Open(const std::string& h, uint16_t port, bool mirroring, co
     uint8_t msg[64];
     std::memcpy(msg, sXPub, 32);
     std::memcpy(msg + 32, cXPub, 32);
-    if (!crypto::Ed25519Verify(ssig, msg, 64, serverEdPk.data())) return fail("server pair-verify signature");
+    if (!crypto::Ed25519Verify(ssig, msg, 64, serverEdPk.data())) return Failed("server pair-verify signature");
     std::memcpy(msg, cXPub, 32);
     std::memcpy(msg + 32, sXPub, 32);
     uint8_t csig[64];
@@ -454,12 +482,15 @@ bool SenderSession::Open(const std::string& h, uint16_t port, bool mirroring, co
     }
     pv = {0, 0, 0, 0};
     pv.insert(pv.end(), csig, csig + 64);
-    if (rtsp.Request("POST", "/pair-verify", "application/octet-stream", pv, resp) != 200) return fail("pair-verify 2");
-    printf("[pair] pair-setup + pair-verify OK\n");
+    lastCode = rtsp.Request("POST", "/pair-verify", "application/octet-stream", pv, resp);
+    return lastCode == 200 || Failed("pair-verify 2");
+}
 
+bool SenderSession::Session(bool mirroring, const char* deviceName) {
+    std::vector<uint8_t> resp;
     std::vector<uint8_t> fp1 = {0x46, 0x50, 0x4c, 0x59, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x04, 0x02, 0x00, 0x01, 0xbb};
-    code = rtsp.Request("POST", "/fp-setup", "application/octet-stream", fp1, resp, nullptr, "X-Apple-ET: 32\r\n");
-    if (code != 200 || resp.size() != 142 || std::memcmp(resp.data(), "FPLY", 4) != 0) return fail("fp-setup 1");
+    int code = rtsp.Request("POST", "/fp-setup", "application/octet-stream", fp1, resp, nullptr, "X-Apple-ET: 32\r\n");
+    if (code != 200 || resp.size() != 142 || std::memcmp(resp.data(), "FPLY", 4) != 0) return Failed("fp-setup 1");
     std::vector<uint8_t> fp2(164);
     crypto::RandomBytes(fp2.data(), fp2.size());
     const uint8_t hdr2[] = {0x46, 0x50, 0x4c, 0x59, 0x03, 0x01, 0x03, 0x00, 0x00, 0x00, 0x00, 0x98};
@@ -467,7 +498,7 @@ bool SenderSession::Open(const std::string& h, uint16_t port, bool mirroring, co
     fp2[12] = fp1[14];  // the key message carries the FairPlay mode chosen in step 1
     code = rtsp.Request("POST", "/fp-setup", "application/octet-stream", fp2, resp, nullptr, "X-Apple-ET: 32\r\n");
     if (code != 200 || resp.size() != 32 || std::memcmp(resp.data() + 12, fp2.data() + 144, 20) != 0)
-        return fail("fp-setup 2");
+        return Failed("fp-setup 2");
     printf("[fairplay] handshake OK\n");
 
     ntpSock = net::UdpBind(ntpPort);
@@ -490,9 +521,9 @@ bool SenderSession::Open(const std::string& h, uint16_t port, bool mirroring, co
     s1.Set("osVersion", Plist::String("27.0"));
     s1.Set("sourceVersion", Plist::String("780.10.1"));
     s1.Set("isScreenMirroringSession", Plist::Bool(mirroring));
-    code = rtsp.Request("SETUP", Url(), "application/x-apple-binary-plist", s1.Serialize(), resp);
+    code = lastCode = rtsp.Request("SETUP", Url(), "application/x-apple-binary-plist", s1.Serialize(), resp);
     Plist r1;
-    if (code != 200 || !Plist::Parse(resp.data(), resp.size(), r1)) return fail("SETUP 1");
+    if (code != 200 || !Plist::Parse(resp.data(), resp.size(), r1)) return false;
     printf("[setup] %s\n", r1.Describe().c_str());
 
     // Session key, computed exactly as the receiver must: FairPlay-decrypt, then hash with ECDH secret.
@@ -1058,6 +1089,279 @@ static int CmdMusic(int argc, char** argv) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// PIN pairing end to end, against a receiver started with AIRGLASS_TEST_PIN=<code> (--loopback): the code is
+// advertised, unpaired and unauthenticated senders are refused, a wrong code fails, the right one pairs (SRP-6a,
+// both proofs, the sealed Ed25519 keys), and the paired key comes back without a code; wrong codes lock it out.
+
+// pair-pin-start + the three pair-setup-pin steps. Returns 200, the HTTP status of the step that failed, or -1 when
+// the receiver's answers don't check out.
+static int PinPair(Rtsp& rtsp, const std::string& user, const std::string& code, const uint8_t edPub[32],
+                   const std::vector<uint8_t>& serverEdPk) {
+    std::vector<uint8_t> resp;
+    int c = rtsp.Request("POST", "/pair-pin-start", "", {}, resp);
+    if (c != 200) return c;
+    const char* kPlist = "application/x-apple-binary-plist";
+    Plist m1 = Plist::Dict();
+    m1.Set("method", Plist::String("pin"));
+    m1.Set("user", Plist::String(user));
+    if ((c = rtsp.Request("POST", "/pair-setup-pin", kPlist, m1.Serialize(), resp)) != 200) return c;
+    Plist r1;
+    if (!Plist::Parse(resp.data(), resp.size(), r1) || !r1.Get("pk") || !r1.Get("salt")) return -1;
+    const std::vector<uint8_t>& B = r1.Get("pk")->AsData();
+    const std::vector<uint8_t>& salt = r1.Get("salt")->AsData();
+    if (B.size() != 256 || salt.size() != 16) return -1;
+    crypto::srp::Client client;
+    std::vector<uint8_t> A, M1;
+    if (!client.Respond(user, code, salt, B, A, M1)) return -1;
+    Plist m2 = Plist::Dict();
+    m2.Set("pk", Plist::Data(A));
+    m2.Set("proof", Plist::Data(M1));
+    if ((c = rtsp.Request("POST", "/pair-setup-pin", kPlist, m2.Serialize(), resp)) != 200) return c;
+    Plist r2;
+    if (!Plist::Parse(resp.data(), resp.size(), r2) || !r2.Get("proof") ||
+        !client.CheckServer(r2.Get("proof")->AsData()))
+        return -1;
+    uint8_t key[16], nonce[16], epk[32], tag[16], theirs[32];
+    crypto::srp::PinSetupCipher(client.Key(), key, nonce);
+    nonce[15]++;
+    crypto::AesGcmEncrypt(key, nonce, 16, edPub, epk, 32, tag);
+    Plist m3 = Plist::Dict();
+    m3.Set("epk", Plist::Data(epk, 32));
+    m3.Set("authTag", Plist::Data(tag, 16));
+    if ((c = rtsp.Request("POST", "/pair-setup-pin", kPlist, m3.Serialize(), resp)) != 200) return c;
+    Plist r3;
+    if (!Plist::Parse(resp.data(), resp.size(), r3) || !r3.Get("epk") || !r3.Get("authTag")) return -1;
+    const std::vector<uint8_t>& sepk = r3.Get("epk")->AsData();
+    const std::vector<uint8_t>& stag = r3.Get("authTag")->AsData();
+    nonce[15]++;
+    if (sepk.size() != 32 || stag.size() != 16 ||
+        !crypto::AesGcmDecrypt(key, nonce, 16, sepk.data(), theirs, 32, stag.data()))
+        return -1;
+    return std::memcmp(theirs, serverEdPk.data(), 32) == 0 ? 200 : -1;
+}
+
+static int CmdPin(int argc, char** argv) {
+    std::string code = argv[2], host = "127.0.0.1";
+    uint16_t port = 7000;
+    for (int i = 3; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--host" && i + 1 < argc) host = argv[++i];
+        else if (a == "--port" && i + 1 < argc) port = uint16_t(atoi(argv[++i]));
+    }
+    std::string wrong = code == "0000" ? "0001" : "0000";
+    const std::string user = "12:34:56:78:9A:BC";
+    auto expect = [](bool ok, const char* what) {
+        printf("[pin] %s: %s\n", what, ok ? "ok" : "FAILED");
+        return ok;
+    };
+    bool ok = true;
+
+    // The code is advertised: pw=true in txtAirPlay.
+    {
+        SenderSession s;
+        if (!s.Connect(host, port)) return 1;
+        Plist q = Plist::Dict();
+        Plist arr = Plist::Array();
+        arr.Append(Plist::String("txtAirPlay"));
+        q.Set("qualifier", arr);
+        std::vector<uint8_t> resp;
+        int c = s.rtsp.Request("GET", "/info", "application/x-apple-binary-plist", q.Serialize(), resp);
+        Plist r;
+        bool pw = false;
+        if (c == 200 && Plist::Parse(resp.data(), resp.size(), r) && r.Get("txtAirPlay")) {
+            const std::vector<uint8_t>& t = r.Get("txtAirPlay")->AsData();
+            for (size_t off = 0; off < t.size(); off += 1 + t[off])
+                if (std::string(t.begin() + long(off) + 1, t.begin() + long(std::min(t.size(), off + 1 + t[off]))) ==
+                    "pw=true")
+                    pw = true;
+        }
+        ok &= expect(pw, "txtAirPlay says pw=true");
+    }
+
+    uint8_t seed[32], pub[32], priv[64];
+    crypto::RandomBytes(seed, 32);
+    crypto::Ed25519KeypairFromSeed(seed, pub, priv);
+
+    // A sender that never paired with the code: pair-verify is answered 470 (asks for the code).
+    {
+        SenderSession s;
+        if (!s.Connect(host, port) || !s.PairSetup(pub)) return 1;
+        ok &= expect(!s.PairVerify(pub, priv) && s.lastCode == 470, "unpaired key: pair-verify 470");
+    }
+    // A sender that skips pairing altogether gets no session.
+    {
+        SenderSession s;
+        if (!s.Connect(host, port)) return 1;
+        ok &= expect(!s.Session(true, "PIN Test Intruder") && s.lastCode == 470, "no pairing: SETUP 470");
+    }
+    // A wrong code fails at the proof.
+    {
+        SenderSession s;
+        if (!s.Connect(host, port)) return 1;
+        ok &= expect(PinPair(s.rtsp, user, wrong, pub, s.serverEdPk) == 470, "wrong code: 470");
+        // ... and pair-setup-pin without a fresh pair-pin-start has no code to use.
+        Plist m1 = Plist::Dict();
+        m1.Set("method", Plist::String("pin"));
+        m1.Set("user", Plist::String(user));
+        std::vector<uint8_t> resp;
+        ok &= expect(s.rtsp.Request("POST", "/pair-setup-pin", "application/x-apple-binary-plist", m1.Serialize(),
+                                    resp) == 470,
+                     "used code: 470");
+    }
+    // The right code pairs; pair-verify with that key and a session follow.
+    {
+        SenderSession s;
+        if (!s.Connect(host, port)) return 1;
+        ok &= expect(PinPair(s.rtsp, user, code, pub, s.serverEdPk) == 200, "right code: paired, both proofs check");
+        ok &= expect(s.PairVerify(pub, priv), "pair-verify with the paired key");
+        ok &= expect(s.Session(true, "PIN Test iPhone"), "SETUP after pairing");
+    }
+    // The paired sender comes back without a code, straight to pair-verify.
+    {
+        SenderSession s;
+        if (!s.Connect(host, port)) return 1;
+        ok &= expect(s.PairVerify(pub, priv), "returning device: pair-verify without a code");
+        ok &= expect(s.Session(true, "PIN Test iPhone"), "returning device: SETUP");
+    }
+    // Wrong codes in a row lock new codes out for a while.
+    {
+        SenderSession s;
+        if (!s.Connect(host, port)) return 1;
+        bool all470 = true;
+        for (int i = 0; i < 3; ++i) all470 &= PinPair(s.rtsp, user, wrong, pub, s.serverEdPk) == 470;
+        ok &= expect(all470, "three wrong codes: 470 each");
+        ok &= expect(PinPair(s.rtsp, user, code, pub, s.serverEdPk) == 403, "then pair-pin-start: 403 (locked out)");
+    }
+    if (!ok) return Fail("pin");
+    printf("PASS pin\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// SRP-6a for PIN pairing: RFC 5054 appendix B vectors, an AirPlay-variant vector computed independently (Python
+// integers + hashlib), and the receiver's own rules (one try per code, bad public keys refused).
+
+static std::vector<uint8_t> Hx(const char* hex) {
+    std::vector<uint8_t> v;
+    HexDecode(hex, v);
+    return v;
+}
+
+static bool Same(const char* what, const std::vector<uint8_t>& got, const std::vector<uint8_t>& want) {
+    if (got == want) return true;
+    printf("FAIL: srp %s\n  got  %s\n  want %s\n", what, HexEncode(got.data(), got.size()).c_str(),
+           HexEncode(want.data(), want.size()).c_str());
+    return false;
+}
+
+static int CmdSrp() {
+    namespace srp = crypto::srp;
+    bool ok = true;
+    ok &= Same("modpow", srp::ModPow({4}, {13}, {0x01, 0xF1}), {0x01, 0xBD});  // 4^13 mod 497 = 445
+
+    // RFC 5054 appendix B (1024-bit group, SHA-1).
+    const srp::Group& g1 = srp::Group1024();
+    auto s = Hx("beb25379d1a8581eb5a727673a2441ee");
+    auto a = Hx("60975527035cf2ad1989806f0407210bc81edc04e2762a56afd529ddda2d4393");
+    auto b = Hx("e487cb59d31ac550471e81f00f6928e01dda08e974a004f49e61f5d105284d20");
+    auto x = srp::PrivateX(s, "alice", "password123");
+    ok &= Same("rfc5054 k", srp::Multiplier(g1), Hx("7556aa045aef2cdd07abaf0f665c3e818913186f"));
+    ok &= Same("rfc5054 x", x, Hx("94b7555aabe9127cc58ccf4993db6cf84d16c124"));
+    auto v = srp::Verifier(g1, x);
+    ok &= Same("rfc5054 v", v,
+               Hx("7e273de8696ffc4f4e337d05b4b375beb0dde1569e8fa00a9886d8129bada1f1822223ca1a605b530e379ba4729fdc59"
+                  "f105b4787e5186f5c671085a1447b52a48cf1970b4fb6f8400bbf4cebfbb168152e08ab5ea53d15c1aff87b2b9da6e04"
+                  "e058ad51cc72bfc9033b564e26480d78e955a5e29e7ab245db2be315e2099afb"));
+    auto A = srp::ClientPublic(g1, a);
+    ok &= Same("rfc5054 A", A,
+               Hx("61d5e490f6f1b79547b0704c436f523dd0e560f0c64115bb72557ec44352e8903211c04692272d8b2d1a5358a2cf1b6e"
+                  "0bfcf99f921530ec8e39356179eae45e42ba92aeaced825171e1e8b9af6d9c03e1327f44be087ef06530e69f66615261"
+                  "eef54073ca11cf5858f0edfdfe15efeab349ef5d76988a3672fac47b0769447b"));
+    auto B = srp::ServerPublic(g1, v, b);
+    ok &= Same("rfc5054 B", B,
+               Hx("bd0c61512c692c0cb6d041fa01bb152d4916a1e77af46ae105393011baf38964dc46a0670dd125b95a981652236f99d9"
+                  "b681cbf87837ec996c6da04453728610d0c6ddb58b318885d7d82c7f8deb75ce7bd4fbaa37089e6f9c6059f388838e7a"
+                  "00030b331eb76840910440b1b27aaeaeeb4012b7d7665238a8e3fb004b117b58"));
+    auto u = srp::Scrambler(g1, A, B);
+    ok &= Same("rfc5054 u", u, Hx("ce38b9593487da98554ed47d70a7ae5f462ef019"));
+    auto premaster = Hx("b0dc82babcf30674ae450c0287745e7990a3381f63b387aaf271a10d233861e359b48220f7c4693c9ae12b0a6f6780"
+                        "9f0876e2d013800d6c41bb59b6d5979b5c00a172b4a2a5903a0bdcaf8a709585eb2afafa8f3499b200210dcc1f10eb"
+                        "33943cd67fc88a2f39a4be5bec4ec0a3212dc346d7e474b29ede8a469ffeca686e5a");
+    ok &= Same("rfc5054 S (server)", srp::ServerSecret(g1, A, v, u, b), premaster);
+    ok &= Same("rfc5054 S (client)", srp::ClientSecret(g1, B, x, a, u), premaster);
+
+    // AirPlay variant (2048-bit group, 40-byte K), fixed salt / a / b; expected values from tools-independent Python.
+    const std::string user = "AA:BB:CC:DD:EE:FF", pin = "4821";
+    auto as = Hx("8f3a1c2d4e5f60718293a4b5c6d7e8f9");
+    auto aa = Hx("1f2e3d4c5b6a79880123456789abcdef0fedcba98765432100112233445566ff");
+    auto ab = Hx("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9a");
+    srp::Server server;
+    server.Start(user, pin, as, ab);
+    ok &= Same("airplay B", server.PublicKey(),
+               Hx("9efec36917a877e671cf41d4e1e41025c301c5bfba4db802c1bf61b4ddc0df3e06321c3f7e20c62f0ee05570fec055f1"
+                  "b30c36f4deafd1e0ffb7e015bc05f39f03e8ca52b42d836265401025ded2c0139f4d6cb72ca10e393942983d16c8dac5"
+                  "9434e87ff2cd12694774862fa20ca10cf8d51dbf49729ca47789f6fe4abbe3483f0fa1b2e6c8786ce2df9fc4566ff698"
+                  "0a0e8bd3b4f12e9ff8bbba553af187f007502d90261e86bc2e859131f516f4b57ab1e4246a60a91f421126bd9d72270f"
+                  "d86829d2af3d8a44e10a14cc91aa3f725a699f933e32fe88b95aec58ae590c591c0f64c35f78053a85f644a2fd82f546"
+                  "9bb3995466992e6ed397506431bceba0"));
+    srp::Client client;
+    std::vector<uint8_t> cA, M1, M2;
+    if (!client.Respond(user, pin, server.Salt(), server.PublicKey(), cA, M1, aa))
+        ok = Same("airplay respond", {}, {1});
+    ok &= Same("airplay A", cA,
+               Hx("8ac069733ede123dddcbca6119eb31cf43547fb27720e2cdc5584ade2484528bcb6f7a9370ba057b4daa18ce919a250a"
+                  "8f18753594bf53c878b33226ff5db6d5cef5fd4c1a3e246eb0d7acdf81d39cb06c28a0ce80b0584d7a955a6c7e592d09"
+                  "2ff0391a16ccd71e80c7a16dc7039441e33c18d5f464d6cfb8a30b37a2391b91cf6f972cb2eed9fe5700783debd767e5"
+                  "1303193ed06987ea4c95b3df3d2adaa650c2df79bbd50f398795adb828367662b51b469d0fcb1830d27f3ee5359a5cfd"
+                  "57f15093536b8338c9f735902221929879e5958a5cc5e0ca4aac30fd04735fbc71e0a0db168db566c72a2204be1c7ee4"
+                  "5d228fc11c5c0db6f1ed91d89974eaa3"));
+    ok &= Same("airplay M1", M1, Hx("397fa6c7bd25f7b4ea5f861abaf85d5565b2f40a"));
+    if (!server.Verify(cA, M1, M2)) ok = Same("airplay verify", {}, {1});
+    ok &= Same("airplay M2", M2, Hx("cef8abb24d33991be671aa555c8da3aff66ddb6e"));
+    ok &= Same("airplay K", server.Key(),
+               Hx("cc7d8a6984347cb962c7316511e29b70c55e03f7cdf1db5f112252c85e2afc49d951c2cd60c98c42"));
+    ok &= Same("airplay K (client)", client.Key(), server.Key());
+    if (!client.CheckServer(M2)) ok = Same("airplay client checks M2", {}, {1});
+    if (server.Verify(cA, M1, M2)) ok = Same("a code is tried once", {}, {1});
+
+    // Random runs: right code agrees, wrong code and bad A are refused.
+    for (int i = 0; i < 3; ++i) {
+        srp::Server sv;
+        sv.Start(user, "0042");
+        if (sv.Salt().size() != 16 || sv.PublicKey().size() != 256 || sv.Salt()[0] == 0 || sv.PublicKey()[0] == 0)
+            ok = Same("salt/B sizes", {}, {1});
+        srp::Client cl;
+        std::vector<uint8_t> A2, P2, Q2;
+        cl.Respond(user, i == 1 ? "0043" : "0042", sv.Salt(), sv.PublicKey(), A2, P2);
+        bool good = sv.Verify(A2, P2, Q2);
+        if (good != (i != 1)) ok = Same(i == 1 ? "wrong code refused" : "right code accepted", {}, {1});
+        if (good && (sv.Key() != cl.Key() || !cl.CheckServer(Q2))) ok = Same("random run keys", sv.Key(), cl.Key());
+    }
+    for (const auto& badA : {std::vector<uint8_t>{0}, srp::Group2048().N, std::vector<uint8_t>(257, 1)}) {
+        srp::Server sv;
+        sv.Start(user, pin);
+        std::vector<uint8_t> out;
+        if (sv.Verify(badA, M1, out)) ok = Same("bad A refused", {}, {1});
+    }
+
+    // pair-setup-pin step 3: the Ed25519 keys both ways, as the receiver and a sender do it.
+    {
+        uint8_t key[16], nonce[16], pk[32], enc[32], dec[32], tag[16];
+        srp::PinSetupCipher(server.Key(), key, nonce);
+        crypto::RandomBytes(pk, 32);
+        nonce[15]++;
+        crypto::AesGcmEncrypt(key, nonce, 16, pk, enc, 32, tag);
+        if (!crypto::AesGcmDecrypt(key, nonce, 16, enc, dec, 32, tag) || std::memcmp(dec, pk, 32) != 0)
+            ok = Same("pin step 3 key exchange", {}, {1});
+        nonce[15]++;
+        if (crypto::AesGcmDecrypt(key, nonce, 16, enc, dec, 32, tag)) ok = Same("pin step 3 nonce counts", {}, {1});
+    }
+    if (!ok) return 1;
+    printf("PASS srp (RFC 5054 vectors, AirPlay variant, one try per code, bad keys refused)\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Resampler quality: new windowed-sinc interpolator vs. the old linear interpolation.
 
 static int CmdResampler() {
@@ -1310,6 +1614,8 @@ int main(int argc, char** argv) {
     if (cmd == "stream") return CmdStream(argc, argv);
     if (cmd == "music") return CmdMusic(argc, argv);
     if (cmd == "resampler") return CmdResampler();
+    if (cmd == "srp") return CmdSrp();
+    if (cmd == "pin" && argc >= 3) return CmdPin(argc, argv);
     if (cmd == "record" && argc >= 4) return CmdRecord(argv[2], argv[3]);
     if (cmd == "resolve" && argc >= 4) return CmdResolve(argv[2], argv[3]);
     if (cmd == "license" && argc >= 5) return CmdLicense(argv[2], argv[3], argv[4]);  // activate|validate KEY NAME|ID

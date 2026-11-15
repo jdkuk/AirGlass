@@ -20,6 +20,7 @@
 #include "ui/allow.h"
 #include "ui/glass_window.h"
 #include "ui/icon.h"
+#include "ui/pin_card.h"
 #include "ui/rename.h"
 #include "ui/welcome.h"
 
@@ -40,6 +41,8 @@ constexpr UINT kMsgTrialEnded = WM_APP + 12;
 constexpr UINT kMsgRecordStopped = WM_APP + 13;  // lParam: std::wstring* (finished file), recorder thread
 constexpr UINT kMsgRenamed = WM_APP + 14;        // lParam: RenameResult* (checked on the network)
 constexpr UINT kMsgAskDevice = WM_APP + 15;      // lParam: std::shared_ptr<AdmitRequest>* (connection thread)
+constexpr UINT kMsgPinCode = WM_APP + 16;        // lParam: std::string* (code to show, "" to hide; connection thread)
+constexpr UINT kMsgPinPaired = WM_APP + 17;      // lParam: PairedDevice* (connection thread)
 constexpr UINT_PTR kTimerNowPlaying = 1;
 constexpr UINT_PTR kTimerTvGrace = 2;
 constexpr UINT_PTR kTimerNpDebounce = 3;
@@ -47,6 +50,7 @@ constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer ha
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
 constexpr UINT kMenuObs = 110, kMenuZoom = 111, kMenuDraw = 112, kMenuAskDevices = 113, kMenuForgetDevices = 114;
+constexpr UINT kMenuRequirePin = 115, kMenuForgetPaired = 116;
 constexpr int kAskSeconds = 30;  // allow-list: a device nobody answers for is turned away
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
@@ -60,6 +64,9 @@ struct MediaJob {
 };
 struct MediaResult {
     std::string rid, error;
+};
+struct PairedDevice {
+    std::string key, name;  // Ed25519 key (hex), and the device id or name
 };
 struct RenameResult {
     std::string wanted, name;  // name = wanted, or wanted + " PC" if another device already uses it
@@ -215,6 +222,8 @@ private:
     // Allow-list. Admit runs on a connection thread; AskNextDevice shows the queued prompts (UI thread).
     bool Admit(const std::string& id, const std::string& name, const std::function<bool()>& gone);
     void AskNextDevice();
+    // PIN pairing (UI thread): the setting, applied to the server and re-announced over mDNS.
+    void ApplyPinRequired(bool on);
 
     // TV Mode control pipe (UI thread).
     void OnPipeCommand(const std::string& line);
@@ -257,6 +266,7 @@ private:
     std::mutex devMu_;
     std::deque<std::shared_ptr<AdmitRequest>> askQueue_;
     bool asking_ = false;  // a prompt is open
+    ui::PinCard pinCard_;
 
     // Mirroring session as reported to TV Mode.
     uint64_t curSid_ = 0;
@@ -468,6 +478,13 @@ void App::AskNextDevice() {
     asking_ = false;
 }
 
+void App::ApplyPinRequired(bool on) {
+    server_.SetPinRequired(on);
+    ri_.pin = on;
+    LOGI("pin: require a code to connect: %s", on ? "on" : "off");
+    if (!loopback_ && !StartMdns()) LOGE("receiver: mDNS restart failed after changing the code setting");
+}
+
 void App::Balloon(const std::wstring& title, const std::wstring& text) {
     NOTIFYICONDATAW nid{};
     nid.cbSize = sizeof(nid);
@@ -547,6 +564,14 @@ void App::ShowTrayMenu() {
     if (ask || !cfg_.devices.empty())
         AppendMenuW(m, MF_STRING | (cfg_.devices.empty() ? MF_GRAYED : 0), kMenuForgetDevices,
                     L"&Forget allowed and blocked devices");
+    bool pin = server_.PinRequired();
+    AppendMenuW(m, MF_STRING | (pin ? MF_CHECKED : 0) | (cfg_.pinManaged ? MF_GRAYED : 0), kMenuRequirePin,
+                cfg_.pinManaged       ? L"Require a code to connect (set by your organisation)"
+                : pin || glass_.Pro() ? L"Require a &code to connect"
+                                      : L"Require a &code to connect (Pro)…");
+    if (pin || !cfg_.paired.empty())
+        AppendMenuW(m, MF_STRING | (cfg_.paired.empty() ? MF_GRAYED : 0), kMenuForgetPaired,
+                    L"Forget &paired devices");
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), kMenuAutostart, L"Start with Windows");
     AppendMenuW(m, MF_STRING, kMenuLogs, L"Open log folder");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -600,6 +625,28 @@ void App::ShowTrayMenu() {
                                                : L"Devices you allowed or blocked are forgotten.");
         break;
     }
+    case kMenuRequirePin:
+        if (cfg_.pinManaged) break;
+        // As the allow-list: turning it on is Pro, turning it off never is, and it stays on after the trial.
+        if (!server_.PinRequired() && !glass_.Pro()) {
+            PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProPin, 0);
+            break;
+        }
+        cfg_.requirePin = !server_.PinRequired();
+        cfg_.Save();
+        ApplyPinRequired(cfg_.requirePin);
+        if (cfg_.requirePin)
+            Balloon(L"AirGlass asks for a code",
+                    L"A device connecting for the first time is asked for a code shown on this PC.");
+        break;
+    case kMenuForgetPaired:
+        cfg_.paired.clear();
+        cfg_.Save();
+        server_.SetPairedKeys({});
+        LOGI("pin: paired devices forgotten");
+        Balloon(L"Paired devices forgotten", server_.PinRequired() ? L"Every device is asked for a code again."
+                                                                   : L"Devices that paired with a code are forgotten.");
+        break;
     case kMenuMediaFolder: {
         std::wstring dir = MediaFile(FOLDERID_Pictures, nullptr);
         ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -752,6 +799,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                               : w == GlassWindow::kProZoom     ? L"Region zoom is"
                               : w == GlassWindow::kProDraw     ? L"Drawing on screen is"
                               : w == GlassWindow::kProAllowList ? L"Asking before new devices connect is"
+                              : w == GlassWindow::kProPin      ? L"Requiring a code to connect is"
                                                                : L"Windowed mode is";
         std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
         reason += cfg_.trialStarted ? L" Your free trial has ended." : L" The free edition mirrors full screen.";
@@ -772,6 +820,29 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         std::unique_ptr<std::shared_ptr<AdmitRequest>> r(reinterpret_cast<std::shared_ptr<AdmitRequest>*>(l));
         askQueue_.push_back(*r);
         AskNextDevice();
+        return 0;
+    }
+    case kMsgPinCode: {
+        std::unique_ptr<std::string> code(reinterpret_cast<std::string*>(l));
+        if (code->empty()) {
+            pinCard_.Hide();
+        } else {
+            std::wstring wcode = Utf8ToWide(*code);
+            pinCard_.Show(wcode, Utf8ToWide(cfg_.name), glass_.SessionMonitor(), AirPlayServer::kPinCodeSeconds);
+            crypto::SecureWipe(wcode.data(), wcode.size() * sizeof(wchar_t));
+        }
+        crypto::SecureWipe(*code);
+        return 0;
+    }
+    case kMsgPinPaired: {
+        std::unique_ptr<PairedDevice> d(reinterpret_cast<PairedDevice*>(l));
+        if (loopback_) return 0;  // tests leave the user's config.ini alone
+        auto it = cfg_.paired.find(d->key);
+        if (it == cfg_.paired.end() || it->second != d->name) {
+            if (it == cfg_.paired.end()) LOGI("pin: \"%s\" paired with the code; remembered", d->name.c_str());
+            cfg_.paired[d->key] = d->name;
+            cfg_.Save();
+        }
         return 0;
     }
     case kMsgRenamed: {
@@ -1126,6 +1197,32 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     ev.admit = [this](const std::string& id, const std::string& name, const std::function<bool()>& gone) {
         return Admit(id, name, gone);
     };
+    ev.pinCode = [target](const std::string& code) {
+        PostMessageW(target, kMsgPinCode, 0, reinterpret_cast<LPARAM>(new std::string(code)));
+    };
+    ev.pinPaired = [target](const std::string& key, const std::string& name) {
+        PostMessageW(target, kMsgPinPaired, 0, reinterpret_cast<LPARAM>(new PairedDevice{key, name}));
+    };
+    // PIN pairing. Loopback tests never need a code unless AIRGLASS_TEST_PIN (4 digits) asks for the PIN path,
+    // and they start with no paired devices.
+    bool pinOn = cfg_.requirePin;
+    if (loopback) {
+        wchar_t tp[16] = L"";
+        DWORD n = GetEnvironmentVariableW(L"AIRGLASS_TEST_PIN", tp, 16);
+        std::string testPin = n == 4 ? WideToUtf8(tp) : std::string();
+        pinOn = testPin.size() == 4 &&
+                std::all_of(testPin.begin(), testPin.end(), [](char c) { return c >= '0' && c <= '9'; });
+        if (pinOn) server_.SetTestPin(testPin);
+    } else {
+        std::vector<std::string> keys;
+        for (const auto& kv : cfg_.paired) keys.push_back(kv.first);
+        server_.SetPairedKeys(keys);
+    }
+    server_.SetPinRequired(pinOn);
+    ri_.pin = pinOn;
+    if (pinOn)
+        LOGI("pin: a code is required to connect%s, %zu paired devices", cfg_.pinManaged ? " (set machine-wide)" : "",
+             loopback ? size_t(0) : cfg_.paired.size());
     if (!server_.Start(ri, uint16_t(cfg_.port), &glass_, &audio_, ev)) {
         MessageBoxW(nullptr, L"AirGlass could not open its network port.", L"AirGlass", MB_ICONERROR);
         return 1;

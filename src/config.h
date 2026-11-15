@@ -33,6 +33,11 @@ struct Config {
         std::string name;      // as the sender called itself, for people reading config.ini
     };
     std::map<std::string, KnownDevice> devices;  // [devices] <sender id>=allow|block <name>
+    // PIN pairing (Pro): require a code shown on the PC before a device connects. [security] requirePin; also
+    // machine-wide in airglass.ini (pinManaged, as askManaged). Devices that paired with a code are kept by their
+    // Ed25519 key: [devices] PIN:<64 hex digits>=paired <name>.
+    bool requirePin = false, pinManaged = false;
+    std::map<std::string, std::string> paired;  // key hex -> name
 
     void Load();   // creates identity on first run
     void Save() const;

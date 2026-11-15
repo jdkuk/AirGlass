@@ -1848,6 +1848,14 @@ void GlassWindow::BeginSession(uint64_t sid, const std::wstring& deviceName, con
          wr.right - wr.left, wr.bottom - wr.top, tv_ ? " [TV Mode]" : "");
 }
 
+HMONITOR GlassWindow::SessionMonitor() const {
+    if (visible_) return MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY);
+    if (tv_) return TvMonitor(nullptr);
+    POINT cursor;
+    GetCursorPos(&cursor);
+    return MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+}
+
 void GlassWindow::ShowWindowForSession() {
     HMONITOR mon;
     if (tv_) {

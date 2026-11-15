@@ -45,3 +45,34 @@ askNewDevices=1
   `AA:BB:CC:DD:EE:FF=allow Jonathan's iPhone`. Tray → **Forget allowed and blocked devices** clears the list. An
   iPhone with *Private Wi-Fi Address* on may have a different id on another network, so it is asked once more there.
 * A user who turns it on during the Pro trial keeps it on after the trial, and can still turn it off.
+
+## Require a code to connect
+
+With this on, an iPhone, iPad or Mac connecting for the first time shows Apple's **AirPlay Code** prompt, and the PC
+shows a random 4-digit code in a card on top of everything, on the screen it mirrors to. Only a device that types
+the right code connects. It works like an Apple TV set to *Require Code: First Time Only*:
+
+* Every attempt gets a new code, good for 2 minutes. A wrong code fails at once (the device can try again with a new
+  code). After 3 wrong codes in a row no new codes are given for 30 seconds, then 1, 2, 4 … minutes, up to an hour;
+  the device shows an error meanwhile.
+* A device that typed the right code is remembered and isn't asked again. The pairing is the device's own Ed25519
+  pairing key, which it proves it holds on every connection (AirPlay's pair-verify), so another device can't borrow
+  it. It's kept under `[devices]` in `%LOCALAPPDATA%\AirGlass\config.ini` as
+  `PIN:<64 hex digits>=paired <device name>`. Tray → **Forget paired devices** forgets them all.
+* A device that hasn't paired is turned away before any session or stream is set up, also if it skips pairing.
+* The code is never written to the log.
+
+Users turn it on from the tray icon: **Require a code to connect** (AirGlass Pro). To turn it on for every user of a
+PC, add this to `%ProgramData%\AirGlass\airglass.ini`:
+
+```ini
+[security]
+requirePin=1
+```
+
+* As with `askNewDevices`, the machine-wide setting works in every edition and users can't turn it off; the tray
+  menu shows it ticked and greyed, *(set by your organisation)*. Restart AirGlass after changing it.
+* It can be combined with *Ask before new devices connect*: the code comes first, then the PC asks about the device.
+* The protocol is the one UxPlay's `-pin` option uses (AirPlay's legacy *pair-pin-start* / *pair-setup-pin*,
+  SRP-6a). Devices that ask for a code by themselves (some company-managed iPhones do) are given one even with the
+  setting off.

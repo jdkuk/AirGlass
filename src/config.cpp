@@ -119,7 +119,13 @@ void Config::Load() {
         askNewDevices = true;
         askManaged = true;
     }
+    requirePin = ReadInt(path, L"security", L"requirePin", 0) != 0;
+    if (!machine.empty() && ReadInt(machine, L"security", L"requirePin", 0) != 0) {
+        requirePin = true;
+        pinManaged = true;
+    }
     devices.clear();
+    paired.clear();
     std::vector<wchar_t> sec(32768);
     DWORD n = GetPrivateProfileSectionW(L"devices", sec.data(), DWORD(sec.size()), path.c_str());
     for (const wchar_t* p = sec.data(); p < sec.data() + n && *p; p += wcslen(p) + 1) {
@@ -127,6 +133,14 @@ void Config::Load() {
         size_t eq = line.find('=');
         if (eq == std::string::npos || eq == 0) continue;
         std::string value = line.substr(eq + 1), verb = value.substr(0, value.find(' '));
+        if (line.compare(0, 4, "PIN:") == 0) {
+            std::string key = line.substr(4, eq - 4);
+            std::vector<uint8_t> raw;
+            if (verb == "paired" && key.size() == 64 && HexDecode(key, raw))
+                paired[HexEncode(raw.data(), raw.size())] =
+                    value.size() > verb.size() ? value.substr(verb.size() + 1) : std::string();
+            continue;
+        }
         if (verb != "allow" && verb != "block") continue;
         KnownDevice d;
         d.allowed = verb == "allow";
@@ -160,6 +174,7 @@ void Config::Save() const {
     Write(path, L"license", L"trial", std::to_wstring(trialStarted));
     Write(path, L"license", L"trialendshown", trialEndShown ? L"1" : L"0");
     if (!askManaged) Write(path, L"security", L"askNewDevices", askNewDevices ? L"1" : L"0");
+    if (!pinManaged) Write(path, L"security", L"requirePin", requirePin ? L"1" : L"0");
     // The whole [devices] section is rewritten: "key=value" strings, each 0-terminated, then one more 0.
     WritePrivateProfileStringW(L"devices", nullptr, nullptr, path.c_str());
     std::wstring sec;
@@ -168,6 +183,13 @@ void Config::Save() const {
         for (wchar_t& c : name)
             if (c < 0x20) c = L' ';
         sec += Utf8ToWide(id) + (d.allowed ? L"=allow" : L"=block") + (name.empty() ? L"" : L" " + name);
+        sec.push_back(L'\0');
+    }
+    for (const auto& [key, n] : paired) {
+        std::wstring name = Utf8ToWide(n);
+        for (wchar_t& c : name)
+            if (c < 0x20) c = L' ';
+        sec += L"PIN:" + Utf8ToWide(key) + L"=paired" + (name.empty() ? L"" : L" " + name);
         sec.push_back(L'\0');
     }
     if (!sec.empty()) {

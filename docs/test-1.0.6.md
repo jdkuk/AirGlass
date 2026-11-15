@@ -87,6 +87,31 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 | 14 | Free edition (trial over) with it off: choose "Ask before new devices connect (Pro)…". | The AirGlass Pro dialog: "Asking before new devices connect is part of AirGlass Pro…". If it was turned on during the trial, it stays on and can be turned off. |
 | 15 | Loopback test (`AirGlass.exe --loopback` + `airglass_test stream`) with it on. | No prompt; the test passes. |
 
+## Require a code to connect (Pro, tray → Require a code to connect)
+
+Use an iPhone that has never connected to this PC (or tray → **Forget paired devices** first). Keep the log open
+(tray → Open log folder → `airglass.log`).
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Tray menu. | "Require a code to connect", unticked, under the allow-list items. No "Forget paired devices" yet. |
+| 2 | Choose it. | Ticked; balloon "AirGlass asks for a code". `requirePin=1` under `[security]` in `config.ini`. Log: `pin: require a code to connect: on`. |
+| 3 | On the iPhone, close and reopen Screen Mirroring and pick the PC. | Within a second or two the iPhone shows **AirPlay Code** with four boxes, and the PC shows a dark card "AirPlay code" with four large digits, on top of everything, centred on the screen the mouse is on (or the mirroring window's screen). The card doesn't take the keyboard focus. |
+| 4 | Type a wrong code on the iPhone. | The iPhone says the code is wrong (or "Unable to connect"); the card goes. Log: `pair-setup-pin: wrong code`. Try again: a **new** code on the PC. |
+| 5 | Type the right code. | The card goes and mirroring starts. Log: `paired with the code (…)` and `pin: "…" paired with the code; remembered`. `config.ini` `[devices]` has `PIN:<64 hex digits>=paired <iPhone name>`. |
+| 6 | Stop mirroring, mirror again; restart AirGlass and mirror again; play music to the PC. | No code asked any of these times. |
+| 7 | From a second device (iPad or Mac) that never paired, pick the PC, then cancel the code prompt on the device. | A code appears, and the card goes within a few seconds of cancelling (or after 2 minutes at the latest). |
+| 8 | From the second device, type a wrong code three times in a row, then try once more. | The fourth attempt is refused straight away with no code shown (the device shows an error). Log: `3 wrong codes in a row; no new codes for 30 s`. After 30 s a code is shown again. |
+| 9 | Wait more than 2 minutes after a code appears before typing it. | The card has gone by itself; the code is refused; the next attempt shows a new code. |
+| 10 | Tray → **Forget paired devices**. Mirror from the iPhone from step 5. | Balloon "Paired devices forgotten". The iPhone is asked for a code again (**device test:** if the iPhone shows only an error instead of the code prompt, note exactly what it shows and whether a second try brings the prompt). Log: `pair-verify from a sender that hasn't paired with the code`. |
+| 11 | Turn on *Ask before new devices connect* too, and mirror from a device that hasn't paired. | First the code; after the right code the PC asks "Allow … to use AirGlass?". |
+| 12 | Untick "Require a code to connect". Mirror from a new device. | No code; it connects (subject to the allow-list). Paired devices stay listed in `config.ini`. |
+| 13 | As admin, create `%ProgramData%\AirGlass\airglass.ini` with `[security]` / `requirePin=1`, restart AirGlass. | The tray item is ticked and greyed, "(set by your organisation)". New devices are asked for a code, also in the free edition. Delete the file and restart: back to the user's choice. |
+| 14 | Free edition (trial over) with it off: choose "Require a code to connect (Pro)…". | The AirGlass Pro dialog: "Requiring a code to connect is part of AirGlass Pro…". If it was turned on during the trial, it stays on and can be turned off. |
+| 15 | With it on, check the log and `airglass.log` after a few pairings. | The codes themselves never appear in the log. |
+| 16 | Mac: mirror from a Mac (Control Centre → Screen Mirroring) with it on. | The Mac asks for the AirPlay code too; the right code connects. |
+| 17 | Loopback tests: `AirGlass.exe --loopback` + `airglass_test stream …` with it on in `config.ini`. Then with `AIRGLASS_TEST_PIN=4821` set for AirGlass, `airglass_test pin 4821 --port 7010`. | The stream test needs no code and passes. The pin test prints `PASS pin`. |
+
 ## Recording with sound (Pro, <kbd>R</kbd>)
 
 | # | Steps | Expected |
@@ -105,7 +130,7 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 
 | # | Steps | Expected |
 |---|---|---|
-| 1 | Free edition: tray → **Buy AirGlass Pro ($9.99)…**. | Top line "Buy once, use it on up to 3 PCs." Below: "AirGlass Pro adds the floating glass window, screenshots, recording with sound, drawing, region zoom, OBS mode and the allow-list for new devices. One-time $9.99, no subscription." The whole text is visible (not cut off) at 100 %, 150 % and 200 % display scaling; the buttons and key box sit below it, nothing overlaps. |
+| 1 | Free edition: tray → **Buy AirGlass Pro ($9.99)…**. | Top line "Buy once, use it on up to 3 PCs." Below: "AirGlass Pro adds the floating glass window, screenshots, recording with sound, drawing, region zoom, OBS mode, and the allow-list and codes for new devices. One-time $9.99, no subscription." The whole text is visible (not cut off) at 100 %, 150 % and 200 % display scaling; the buttons and key box sit below it, nothing overlaps. |
 | 2 | Press <kbd>D</kbd> (or <kbd>O</kbd>, <kbd>Z</kbd>, <kbd>S</kbd>, <kbd>R</kbd>) in the free edition. | The same dialog with the feature's own first line. |
 | 3 | Paste a valid key, Activate. | "Thank you! AirGlass Pro is unlocked: the glass window and all the Pro tools are yours on this PC." |
 | 4 | Fresh install (delete `trial=` under `[license]`), mirror for the first time. | Balloon "Your 7-day AirGlass Pro trial has started" naming T, S, R, D, Z and O. |

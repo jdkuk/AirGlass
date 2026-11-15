@@ -58,6 +58,9 @@ jobs:
       - name: Resampler quality
         run: ./build/airglass_test.exe resampler
 
+      - name: SRP-6a for PIN pairing (RFC 5054 vectors, AirPlay variant)
+        run: ./build/airglass_test.exe srp
+
       - name: bplist cross-check (C++ vs Python plistlib)
         run: python tools/bplist_check.py "$env:RUNNER_TEMP/bplist" build/airglass_test.exe
 
@@ -88,6 +91,20 @@ jobs:
           Stop-Process -Id $app.Id -ErrorAction SilentlyContinue
           Get-Content "$env:LOCALAPPDATA/AirGlass/airglass-loopback.log" -Tail 60
           if (-not $ok) { exit 1 }
+
+      - name: Loopback PIN pairing (code required, wrong code, paired device comes back)
+        timeout-minutes: 3
+        run: |
+          Start-Sleep 2  # the previous receiver has let go of its port and instance lock
+          Copy-Item "$env:LOCALAPPDATA/AirGlass/airglass-loopback.log" "$env:LOCALAPPDATA/AirGlass/airglass-loopback-e2e.log" -ErrorAction SilentlyContinue
+          $env:AIRGLASS_TEST_PIN = '4821'
+          $app = Start-Process build/AirGlass.exe -ArgumentList '--loopback','--debug' -PassThru
+          Start-Sleep 3
+          ./build/airglass_test.exe pin 4821 --port 7010
+          $rc = $LASTEXITCODE
+          Stop-Process -Id $app.Id -ErrorAction SilentlyContinue
+          Get-Content "$env:LOCALAPPDATA/AirGlass/airglass-loopback.log" | Select-String 'pin|pair|470|403' | Select-Object -Last 40
+          if ($rc -ne 0) { exit 1 }
 
       - name: Collect logs
         if: always()

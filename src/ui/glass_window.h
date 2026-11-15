@@ -65,15 +65,18 @@ public:
     // "float" | "full" | "hidden" | "free" (moved or resized by hand) and the glass rect on screen.
     const char* TvModeName() const;
     RECT TvRect();
+    // The screen mirroring is on, or would open on now (the PIN code card goes there too).
+    HMONITOR SessionMonitor() const;
 
     std::function<void()> onUserClose;
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
     // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
     // kProObs (OBS mode), kProZoom (region zoom), kProDraw (drawing on the picture); kProAllowList (asking before
-    // new devices connect) comes from the tray menu.
+    // new devices connect) and kProPin (requiring a code to connect) come from the tray menu.
     enum ProFeature {
-        kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4, kProDraw = 5, kProAllowList = 6
+        kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4, kProDraw = 5, kProAllowList = 6,
+        kProPin = 7
     };
     std::function<void(int feature)> onUpgradeRequested;
 

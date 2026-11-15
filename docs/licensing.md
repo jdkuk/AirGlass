@@ -14,6 +14,7 @@
 | Region zoom (<kbd>Z</kbd> then drag, or <kbd>Ctrl</kbd>+drag): zoom into part of the mirrored picture | | ✅ |
 | Draw on screen (<kbd>D</kbd>): pen, arrow and highlighter on the picture; in screenshots and OBS mode, not in recordings | | ✅ |
 | Allow-list (tray → *Ask before new devices connect*): Allow once / Always allow / Block for each new device | machine-wide setting only ([Deployment](deployment.md)) | ✅ |
+| Require a code to connect (tray): a new device types the 4-digit *AirPlay Code* shown on the PC; paired devices are remembered | machine-wide setting only ([Deployment](deployment.md)) | ✅ |
 | PCs per key | | 3 |
 
 **Free trial:** the first mirroring session starts a 7-day Pro trial (`license::kTrialDays`; `trial` in

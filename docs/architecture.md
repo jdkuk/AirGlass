@@ -92,6 +92,12 @@ D2D (text) and the renderer; a single recursive GPU lock serialises immediate-co
    displays[{width,height,refreshRate,maxFPS…}] (display = the monitor's shape capped at
    1920×1080, because iPhones mirror 4K landscape at only ~28 fps; refresh capped 120), audio formats/latencies.
 3. **pair-setup** — exchange Ed25519 public keys (persistent receiver identity).
+   With *Require a code to connect* (TXT `pw=true`, RAOP `sf=0x8c`), a new sender first runs
+   **pair-pin-start** (the PC shows a 4-digit code) and three **pair-setup-pin** steps: SRP-6a
+   (RFC 5054 2048-bit group, SHA-1, Apple's 40-byte K = H(S‖0)‖H(S‖1); `src/crypto/srp.*`),
+   then both Ed25519 keys sealed with AES-128-GCM (key/nonce from SHA-512 of
+   "Pair-Setup-AES-Key"/"Pair-Setup-AES-IV" ‖ K). Only keys paired that way (kept in
+   config.ini) pass pair-verify, and SETUP needs a pair-verified, paired key; others get 470.
 4. **pair-verify** — X25519 ECDH; AES-128-CTR keyed by SHA-512("Pair-Verify-AES-Key"‖S),
    IV by SHA-512("Pair-Verify-AES-IV"‖S); Ed25519 signatures both ways.
 5. **fp-setup** — FairPlay SAP v2.5 two-step handshake (canned replies) and later
@@ -146,7 +152,10 @@ Two passes per new video frame, one per UI frame:
   networks are classified as *Public*).
 
 ## 7. Verification
-* Crypto self-tests (RFC 7748 X25519, RFC 8032 Ed25519, NIST AES-CTR/CBC, SHA-512).
+* Crypto self-tests (RFC 7748 X25519, RFC 8032 Ed25519, NIST AES-CTR/CBC, SHA-512, SHA-1,
+  AES-GCM with 96-bit and 16-byte nonces).
+* `airglass_test srp`: RFC 5054 appendix B vectors and an AirPlay-variant vector computed
+  independently; `airglass_test pin` runs the whole PIN exchange against a loopback receiver.
 * bplist reader/writer cross-checked against Python `plistlib`.
 * `airglass_test.exe` — a loopback AirPlay *sender* that performs the full handshake
   (pair-verify, FairPlay, SETUP), then streams encrypted H.264 (portrait → landscape to

@@ -207,8 +207,8 @@ void OpenBuyPage() { ShellExecuteW(nullptr, L"open", kBuyUrl, nullptr, nullptr, 
 bool ShowUpgradeDialog(HWND owner, const std::wstring& reason, std::string* key, std::string* instanceId) {
     std::wstring buy = std::wstring(L"Buy AirGlass Pro (") + kPrice + L")…";
     std::wstring pitch = std::wstring(L"AirGlass Pro adds the floating glass window, screenshots, recording with "
-                                      L"sound, drawing, region zoom, OBS mode and the allow-list for new devices. "
-                                      L"One-time ") + kPrice + L", no subscription.";
+                                      L"sound, drawing, region zoom, OBS mode, and the allow-list and codes for "
+                                      L"new devices. One-time ") + kPrice + L", no subscription.";
     ui::Template t;
     t.Dialog(L"AirGlass Pro", 260, 142, 8);
     t.Item(ui::kStatic, L"", kIdReason, 10, 8, 240, 18, SS_LEFT);

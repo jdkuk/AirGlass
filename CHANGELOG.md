@@ -28,6 +28,17 @@ All notable changes to AirGlass are documented here. The format is based on
   turns it away; a turned-away device gets a clean refusal and shows an error. Answers are kept under `[devices]` in
   `config.ini`; tray → **Forget allowed and blocked devices** clears them. IT departments can turn it on for the
   whole machine with `askNewDevices=1` under `[security]` in `%ProgramData%\AirGlass\airglass.ini`.
+- Pro: require a code to connect. Tray → **Require a code to connect**: an iPhone, iPad or Mac connecting for the
+  first time shows Apple's "AirPlay Code" prompt, and the PC shows a random 4-digit code in a card on top of
+  everything, on the screen it mirrors to. Each attempt gets a new code; three wrong codes in a row pause new codes
+  (30 s, growing up to an hour). A device that typed the right code is remembered by its pairing key under
+  `[devices]` in `config.ini` and isn't asked again; tray → **Forget paired devices** clears them. Devices that
+  haven't paired are turned away with a clean refusal before any session starts. IT departments can turn it on for
+  the whole machine with `requirePin=1` under `[security]` in `%ProgramData%\AirGlass\airglass.ini`. The pairing is
+  AirPlay's legacy PIN exchange (SRP-6a, as UxPlay's `-pin`), with AirGlass's own SRP and AES-GCM code, tested
+  against the RFC 5054 vectors and end to end in CI.
+- A device that asks for a code by itself (some company-managed iPhones do) now gets one, in every edition, instead
+  of failing to pair.
 
 ### Changed
 - Pro: recordings now have sound. The mirrored session's audio is encoded to AAC (FFmpeg's built-in encoder) as a

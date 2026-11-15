@@ -1,15 +1,25 @@
 // Crypto primitives used by the AirPlay protocol.
 //  - SHA-512, Ed25519 (orlp/ed25519), X25519 (ref10 ladder on orlp field arithmetic)
-//  - AES-128 CTR (continuous keystream) and CBC via Windows CNG
+//  - AES-128 CTR (continuous keystream) and CBC via Windows CNG, AES-128-GCM (own GHASH) for PIN pairing
+//  - SHA-1 via CNG (SRP-6a in PIN pairing, src/crypto/srp.h)
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace crypto {
 
 void RandomBytes(void* out, size_t n);
+// Zeroes memory the compiler can't optimise away (keys, PIN codes).
+void SecureWipe(void* p, size_t n);
+inline void SecureWipe(std::string& s) {
+    SecureWipe(s.data(), s.size());
+    s.clear();
+}
+
+void Sha1Digest(const void* data, size_t n, uint8_t out[20]);
 
 class Sha512 {
 public:
@@ -62,6 +72,13 @@ public:
 private:
     void* key_ = nullptr;
 };
+
+// AES-128-GCM without additional data, for any nonce length (AirPlay's pair-setup-pin uses 16-byte nonces, which
+// CNG's GCM mode does not take). Decrypt returns false, and zeroes `out`, when the tag doesn't match.
+bool AesGcmEncrypt(const uint8_t key[16], const uint8_t* nonce, size_t nonceLen, const uint8_t* in, uint8_t* out,
+                   size_t n, uint8_t tag[16]);
+bool AesGcmDecrypt(const uint8_t key[16], const uint8_t* nonce, size_t nonceLen, const uint8_t* in, uint8_t* out,
+                   size_t n, const uint8_t tag[16]);
 
 // Known-answer tests for all of the above; returns false and logs on mismatch.
 bool SelfTest();
