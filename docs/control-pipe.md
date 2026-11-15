@@ -17,13 +17,20 @@ While at least one client is connected the window is **TV-controlled**: topmost,
 > In the **free edition**, sessions are full screen. A `layout` that asks for `float` opens the upgrade prompt instead of
 > leaving full screen.
 
+> [!NOTE]
+> **Two devices at once (Pro).** Each mirroring session has its own window and its own `started` / `stopped` events
+> (by `session`). Commands (`layout`, `highlight`, `press`, `stop`) drive the **most recent** session's window, and
+> `size` / `state` describe it. When that session ends while the other still runs, AirGlass sends a fresh `state`
+> for the one that is left and commands drive it from then on. A third device takes over the oldest session, which
+> gets `stopped` with `reason` `takeover`. `state` also has `sessions`, the number of sessions mirroring.
+
 ## AirGlass → client (events)
 
 On connect, AirGlass sends `state`:
 
 ```json
 {"event":"state","version":1,"receiver":"Living Room PC","session":0,"device":"","model":"","width":0,"height":0,
- "mode":"float","corner":"br","size":"s","visible":false,"nowplaying":null}
+ "mode":"float","corner":"br","size":"s","visible":false,"sessions":0,"nowplaying":null}
 ```
 
 | Event | Example |

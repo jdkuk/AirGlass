@@ -134,3 +134,27 @@ Use an iPhone that has never connected to this PC (or tray → **Forget paired d
 | 2 | Press <kbd>D</kbd> (or <kbd>O</kbd>, <kbd>Z</kbd>, <kbd>S</kbd>, <kbd>R</kbd>) in the free edition. | The same dialog with the feature's own first line. |
 | 3 | Paste a valid key, Activate. | "Thank you! AirGlass Pro is unlocked: the glass window and all the Pro tools are yours on this PC." |
 | 4 | Fresh install (delete `trial=` under `[license]`), mirror for the first time. | Balloon "Your 7-day AirGlass Pro trial has started" naming T, S, R, D, Z and O. |
+
+## Two devices at once (Pro)
+
+You need two Apple devices (an iPhone and an iPad, two iPhones, or an iPhone and a Mac). Keep the log open (tray →
+Open log folder → `airglass.log`).
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Pro or trial: mirror from the iPhone in the glass window. Then start mirroring from the iPad. | A second glass window opens **next to** the first (on the side with more room, smaller if it has to be), showing the iPad. The iPhone keeps mirroring. Log: `rtsp: connection … mirrors to window 2 (2 of 2 at once)` and `sessions: … in window 2; 2 mirroring at once`. |
+| 2 | Play a video with sound on both devices. | Only the iPad's sound plays (the newest session). |
+| 3 | Click the iPhone's window. | Its sound plays now and the iPad's stops, within a moment, without clicks or a mix of both. Log: `sessions: window 1 has the focus…` and `the sound now comes from connection …`. Change the volume on the iPad: nothing changes; on the iPhone: the PC follows. |
+| 4 | Press <kbd>Tab</kbd> in that window. | The iPad's window comes to the front and its sound plays. <kbd>Tab</kbd> again goes back. |
+| 5 | Right-click the tray icon. | "Show mirroring windows", a greyed "Tools for “<device used last>”" and "Switch to “<other device>”  Tab". Screenshot, recording, OBS mode, zoom and draw act on the window used last. |
+| 6 | Press <kbd>S</kbd> in each window, and <kbd>R</kbd> in both (record a few seconds of video with sound on both), stop both. | Each PNG shows its own window; the second window's files end in " (2)". Each MP4 has its own device's picture **and its own sound**, even the one whose sound wasn't playing. |
+| 7 | <kbd>D</kbd>, <kbd>Z</kbd>, <kbd>O</kbd>, <kbd>T</kbd> in one window. | Only that window draws, zooms, turns green or stays on top. In OBS mode the second window is titled "AirGlass (OBS 2)" (OBS can capture both). |
+| 8 | Move, resize and rotate each device. | Each window behaves on its own; nothing flickers in the other. |
+| 9 | Stop mirroring on the iPad. | Its window melts away; the iPhone keeps going and its sound plays. |
+| 10 | With both mirroring, start a third device (or stop and restart mirroring on one of them, so it counts as new). | The **oldest** session is taken over: its window shows the new device; the other window is untouched. The oldest device shows mirroring has ended. Log: `takes over the oldest mirroring session`. |
+| 11 | Close one window with ✕. | Only that device disconnects. |
+| 12 | Play music (AirPlay audio, not mirroring) to the PC while two devices mirror. | Music plays as in 1.0.5. |
+| 13 | Free edition (trial over, or loopback with `AIRGLASS_DEBUG_FREE=1`): mirror from the iPhone, then from the iPad. | As in 1.0.5: the iPad takes over full screen and the iPhone shows mirroring has ended. The AirGlass Pro dialog opens once: "Mirroring two devices at once is part of AirGlass Pro…". A later takeover in the same run doesn't ask again; the same device reconnecting never asks. |
+| 14 | With *Ask before new devices connect* and/or *Require a code to connect* on, start the second device. | It is asked about / asked for a code as before; the first keeps mirroring meanwhile. |
+| 15 | TV Mode connected: mirror from two devices. | Both windows float topmost without taking the focus. When the second opens on the first one's corner, the first slides to the other bottom (or top) corner. TV Mode's remote drives the newest window; when that one stops, it drives the other. |
+| 16 | Loopback: `tools\two_devices.ps1`, then `tools\two_devices.ps1 -Free` (after `build.py` and the test media). | `PASS two devices (Pro)` and `PASS two devices (free edition: takeover)`. |

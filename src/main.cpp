@@ -50,7 +50,7 @@ constexpr UINT_PTR kTimerPromoteTray = 4;  // first run: retry until Explorer ha
 constexpr UINT kMenuAutostart = 101, kMenuLogs = 102, kMenuQuit = 103, kMenuShow = 104, kMenuPro = 105;
 constexpr UINT kMenuShot = 106, kMenuRecord = 107, kMenuMediaFolder = 108, kMenuRename = 109;
 constexpr UINT kMenuObs = 110, kMenuZoom = 111, kMenuDraw = 112, kMenuAskDevices = 113, kMenuForgetDevices = 114;
-constexpr UINT kMenuRequirePin = 115, kMenuForgetPaired = 116;
+constexpr UINT kMenuRequirePin = 115, kMenuForgetPaired = 116, kMenuSwitchWindow = 117;
 constexpr int kAskSeconds = 30;  // allow-list: a device nobody answers for is turned away
 constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
@@ -234,6 +234,7 @@ private:
     // The window the tray's tools and the sound follow: the one focused last, else the newest session.
     GlassWindow& Active();
     void FocusWindow(int i);
+    void SwitchWindow();  // Tab: bring the other live window to the front; it gets the tools and the sound
     void SetPro(bool on);      // every window, and how many sessions the server allows at once
     void UpdateMirrorSinks();
     void SaveRecordingAtEnd(GlassWindow& g, const wchar_t* why);
@@ -540,6 +541,8 @@ void App::ShowTrayMenu() {
         if (live > 1 && wi >= 0) {  // two devices: say which window the tools act on (the one used last)
             std::wstring which = L"Tools for “" + Utf8ToWide(live_[wi].device) + L"”";
             AppendMenuW(m, MF_STRING | MF_GRAYED, 0, which.c_str());
+            std::wstring other = L"Switch to “" + Utf8ToWide(live_[1 - wi].device) + L"”\tTab";
+            AppendMenuW(m, MF_STRING, kMenuSwitchWindow, other.c_str());
         }
         AppendMenuW(m, MF_STRING, kMenuShot, pro ? L"Save screenshot\tS" : L"Save screenshot (Pro)…");
         std::wstring rec = L"Start recording\tR";
@@ -621,6 +624,7 @@ void App::ShowTrayMenu() {
             if (Win(i) && Win(i) != &g) Win(i)->BringToFront();
         g.BringToFront();
         break;
+    case kMenuSwitchWindow: SwitchWindow(); break;
     case kMenuRename: RenameReceiver(); break;
     case kMenuPro: ShowUpgrade(L"Buy once, use it on up to 3 PCs."); break;
     case kMenuShot:
@@ -1226,6 +1230,7 @@ bool App::CreateGlass(int i) {
         cfg_.Save();
     };
     g->onActivated = [this, i] { FocusWindow(i); };
+    g->onNextWindow = [this] { SwitchWindow(); };
     g->SetTvDefaults(tvDefaults_);
     if (pipeClients_ > 0) g->SetTvControlled(true);
     return true;
@@ -1258,6 +1263,16 @@ void App::FocusWindow(int i) {
     if (active_ != i && LiveCount() > 1) LOGI("sessions: window %d has the focus; the tools and the sound follow it", i + 1);
     active_ = i;
     server_.SetMirrorAudioFocus(g->Session());
+}
+
+void App::SwitchWindow() {
+    for (int i = 0; i < kWindows; ++i) {
+        GlassWindow* g = Win(i);
+        if (i == WindowOf(Active().Session()) || !g || !g->SessionLive()) continue;
+        FocusWindow(i);
+        if (!g->TvControlled()) g->BringToFront();  // TV Mode keeps the keyboard focus; the sound still moves
+        return;
+    }
 }
 
 // Pro mirrors two devices at once (the second window is made the first time Pro is on); the free edition one, and

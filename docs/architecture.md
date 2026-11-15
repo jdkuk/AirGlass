@@ -78,9 +78,11 @@ the colours of the video edge (so the glass tints itself to whatever is on scree
   decrypts + decodes), audio UDP thread (decrypt + decode), NTP thread, mDNS thread.
 * **Audio** — WASAPI event thread (MMCSS "Pro Audio").
 
-One D3D11 device (BGRA + video support, multithread-protected) is shared by the decoder,
-D2D (text) and the renderer; a single recursive GPU lock serialises immediate-context use
-(also handed to FFmpeg's D3D11VA lock callbacks).
+Each glass window has one D3D11 device (BGRA + video support, multithread-protected) shared by
+its decoder, D2D (text) and its renderer; a recursive GPU lock per window serialises
+immediate-context use (also handed to FFmpeg's D3D11VA lock callbacks). With two devices
+mirroring (Pro, §10) there are two windows, each with its own device, swap chain,
+DirectComposition target, render thread, decoder and recorder; nothing GPU-side is shared.
 
 ## 3. Protocol (AirPlay 2 "legacy pairing" mirroring, as spoken by iOS/macOS)
 
@@ -136,7 +138,8 @@ Two passes per new video frame, one per UI frame:
      device-name label (DirectWrite → texture).
 
 ## 5. Robustness
-* Session take-over: a new sender replaces the current one.
+* Session take-over: when every window is in use, a new sender replaces the oldest session (free edition: the one
+  session; Pro: the older of two). See §10.
 * Dismiss on TEARDOWN, iOS 27 "full TEARDOWN without 110", mirror socket close or NTP
   timeout.
 * Audio: 3× redundant ELD packets de-duplicated by sequence number, gaps concealed,
@@ -218,3 +221,45 @@ FLUSH pause, retransmission service, fake DACP server) against `--loopback` with
 `AIRGLASS_DEBUG_AUDIODUMP` (decoded PCM was bit-identical to the sent PCM) and
 `AIRGLASS_DEBUG_DACP_PORT`; a Node pipe client checked the control-pipe events and commands end
 to end.
+
+## 10. Two devices at once (Pro)
+
+**Sessions.** `AirPlayServer` keeps a list of *sinks* (`SetMirrorSinks`): the glass windows a mirror stream can draw
+on. The free edition gives it one window, Pro two (the second `GlassWindow` is made the first time Pro is on, so it
+exists before any sender asks for it). When a connection sets up its type-110 stream, `ClaimMirror` picks the sink on
+the connection's own thread, before the `MirrorStream` starts: a free one, or, when all are in use, the **oldest**
+session's, which is kicked (RTSP socket shut, its streams stop). With one sink that is exactly the old takeover. The
+session's sink is remembered by its connection, so its mirroring audio feeds that window's recorder. The
+`mirrorStarted` event says which window (`StartEvent::window`); `mirrorStopped` and `videoSize` carry the session id
+and go to the window showing it. Re-SETUP on the same connection keeps its sink.
+
+**Ports.** Nothing is global: RTSP connections are already one thread each; every mirror stream listens on its own
+ephemeral TCP port, every audio stream on its own UDP data/control ports, and every connection runs its own NTP client
+on its own UDP port (all returned in SETUP). FairPlay (`playfair`) only reads its tables. `MirrorStream`,
+`VideoDecoder` and `Recorder` are per session/window.
+
+**Sound.** `AudioOutput` (one WASAPI stream) has room for one producer, so only one mirroring session's audio plays:
+`AirPlayServer::audioFocus_` names it, and each mirroring `AudioStream` checks it per packet (muted streams still
+decode for their window's recorder; a stream that gets the sound reconfigures the output and flushes the other's
+tail). The newest session gets it, unless the other window has the keyboard focus; activating a window (`WM_ACTIVATE`,
+<kbd>Tab</kbd>, tray *Switch to*) gives it to that window's session; when the session with the sound ends, the most
+recent other one gets it. A muted session's AirPlay volume is kept and applied when it gets the sound. Music sessions
+are unchanged (they always play). Writers to the output ring are serialised by a mutex, so a hand-over (or music
+next to mirroring) never corrupts it.
+
+**App.** The tray's tools, the PIN card's screen and dialog owners use the window used last (`App::Active`); the
+glass keys act on their own window. Screenshots and recordings from the second window end in " (2)", so two
+windows never share a file name. A second window opens beside the first (`GlassWindow::BesideSlab`: the side with
+more room, shrunk to fit, else the usual centred place).
+
+**TV Mode** follows the most recent session (`App::tvWin_`): `layout`, `highlight`, `press` and `stop` act on its
+window, and `size` events are for it. Each session still gets its own `started` and `stopped` (`reason` `takeover`
+when a newer device took its window). When the followed session ends and the other is still live, TV Mode follows
+that one and gets a fresh `state`. `state` has `sessions` (how many are live). Under TV Mode both windows are
+TV-controlled (topmost, no focus); when the second opens on the first's corner, the first moves to the mirrored
+corner (`layoutChanged` for its session).
+
+**Verification:** `tools/two_devices.ps1` in CI: two loopback senders at once (two windows, two decoders, both run
+to the end, `snap_00.bmp` and `snap_w2_00.bmp`), then three where the first is taken over (the test sender exits 3)
+and the other two finish; with `-Free`, a second sender takes over the first and no second window exists.
+

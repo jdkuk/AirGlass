@@ -2702,6 +2702,9 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
             else SetPinned(!pinned_);
             return 0;
         case 'T': SetPinned(!pinned_); return 0;
+        case VK_TAB:  // two devices at once: the other window (and its sound)
+            if (onNextWindow) onNextWindow();
+            return 0;
         case 'S':  // Pro: screenshot (the caller picks the file name)
             if (!sessionLive_) return 0;
             if (!pro_) {

@@ -15,6 +15,7 @@
 | Draw on screen (<kbd>D</kbd>): pen, arrow and highlighter on the picture; in screenshots and OBS mode, not in recordings | | ✅ |
 | Allow-list (tray → *Ask before new devices connect*): Allow once / Always allow / Block for each new device | machine-wide setting only ([Deployment](deployment.md)) | ✅ |
 | Require a code to connect (tray): a new device types the 4-digit *AirPlay Code* shown on the PC; paired devices are remembered | machine-wide setting only ([Deployment](deployment.md)) | ✅ |
+| Devices mirroring at once, each in its own window | 1: a new device takes over | 2: a third device takes over the oldest session |
 | PCs per key | | 3 |
 
 **Free trial:** the first mirroring session starts a 7-day Pro trial (`license::kTrialDays`; `trial` in
@@ -23,6 +24,12 @@ behaves as the free edition. Loopback tests and `--pro` builds skip the trial.
 
 In the free edition, every mirroring session opens full screen. Leaving full screen (<kbd>Esc</kbd>, <kbd>F</kbd>,
 double-click, the capsule button, or a control-pipe `float` layout) opens the **AirGlass Pro** dialog instead.
+
+**Two devices at once:** Pro has two mirroring windows, so two senders can mirror at the same time; a third takes
+over the oldest session (its window and all). The free edition has one, and a new sender takes it over, as in 1.0.5;
+the first time a *different* device takes over in a run, AirGlass offers Pro ("Mirroring two devices at once is part
+of AirGlass Pro."). If Pro ends while two are mirroring (trial over, key refunded), both keep going until the next
+device connects, which then takes over both. Allow-list, codes, trial and refund counting stay per connection.
 
 ## How the unlock works
 

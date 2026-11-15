@@ -39,6 +39,15 @@ All notable changes to AirGlass are documented here. The format is based on
   against the RFC 5054 vectors and end to end in CI.
 - A device that asks for a code by itself (some company-managed iPhones do) now gets one, in every edition, instead
   of failing to pair.
+- Pro: two devices at once. An iPhone and an iPad (or two phones, or a Mac) can mirror at the same time, each in its
+  own glass window, with its own decoder and recorder; the second window opens next to the first. A third device
+  takes over the oldest of the two sessions. The free edition still mirrors one device at a time: a new device takes
+  over, and the first time a different device does, AirGlass offers Pro. The tray's tools (screenshot, recording,
+  OBS mode, zoom, drawing) and the keys act on the window used last; the tray says which, and
+  **Switch to "…"** (<kbd>Tab</kbd> in a window) goes to the other one. Only one window's sound plays: the one used
+  last, or else the newest session; each recording still gets its own session's sound. AirPlay music works as
+  before. TV Mode drives the most recent session's window; under TV Mode the earlier window moves to the other
+  corner. In OBS mode the second window is titled "AirGlass (OBS 2)".
 
 ### Changed
 - Pro: recordings now have sound. The mirrored session's audio is encoded to AAC (FFmpeg's built-in encoder) as a

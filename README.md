@@ -102,6 +102,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | Draw on screen: pen, arrow and highlighter on the mirrored picture (<kbd>D</kbd>) | | ✅ |
 | Allow-list: ask on the PC before a new device connects (tray → *Ask before new devices connect*) | | ✅ |
 | Require a code: a new device must type the 4-digit code the PC shows (tray → *Require a code to connect*) | | ✅ |
+| Two devices at once, each in its own window (a new device takes over in the free edition; a third one takes over the oldest in Pro) | one at a time | ✅ two |
 | Use on up to 3 PCs | | ✅ |
 
 **Every install starts with a free 7-day Pro trial** from your first mirroring session, so you can try the window,
@@ -138,12 +139,14 @@ IT departments can set the name for the whole machine: see [Deployment](docs/dep
 | Double-click, <kbd>F</kbd> or <kbd>F11</kbd> | full screen (<kbd>Esc</kbd> leaves) |
 | Hover | glass controls: ✕ disconnect · 📌 keep on top · ⤢ full screen |
 | <kbd>P</kbd> | keep on top |
+| <kbd>Tab</kbd> | two devices at once: go to the other window (its sound plays) |
 | <kbd>O</kbd> | OBS mode: chroma-key green round the picture, no glass, window title "AirGlass (OBS)" |
 | <kbd>D</kbd> | draw on the picture: drag to draw · <kbd>P</kbd> pen · <kbd>A</kbd> arrow · <kbd>H</kbd> highlighter · <kbd>1</kbd>–<kbd>4</kbd> red, yellow, green, blue · <kbd>Backspace</kbd> undo · <kbd>C</kbd> clear · <kbd>D</kbd> or <kbd>Esc</kbd> stops drawing |
 | Right-click | menu |
 
 Rotating the device morphs the window between portrait and landscape. Audio plays through the default Windows output,
-and the device's volume buttons control it. Tray icon (right-click): *Rename this PC…*, *OBS mode*, *Zoom into a region*,
+and the device's volume buttons control it. With two devices mirroring, each has its own window; the keys, the tray's
+tools and the sound follow the window used last (tray → *Switch to “…”*). Tray icon (right-click): *Rename this PC…*, *OBS mode*, *Zoom into a region*,
 *Draw on screen*, *Ask before new devices connect*,
 *Forget allowed and blocked devices*, *Require a code to connect*, *Forget paired devices*, *Start with Windows*,
 *Open log folder*, *Quit*.

@@ -73,6 +73,7 @@ public:
 
     std::function<void()> onUserClose;
     std::function<void()> onActivated;  // the window got the focus (the tools and the sound follow it)
+    std::function<void()> onNextWindow;  // Tab: go to the other mirroring window (two devices at once)
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
     // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
