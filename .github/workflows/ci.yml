@@ -195,7 +195,7 @@ jobs:
           Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dir",'/CURRENTUSER' -Wait
           $objdump = (Get-ChildItem .toolchain -Recurse -Filter 'llvm-objdump.exe' | Select-Object -First 1).FullName
           $imports = & $objdump -p "$dir/AirGlass.exe" | Select-String 'DLL Name: (.+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
-          $missing = $imports | Where-Object { $_ -match '^(av|sw)' -and -not (Test-Path (Join-Path $dir $_)) }
+          $missing = $imports | Where-Object { $_ -cmatch '^(avcodec|avformat|avutil|avdevice|avfilter|swresample|swscale)-' -and -not (Test-Path (Join-Path $dir $_)) }
           "imports: $($imports -join ', ')"
           if ($missing) { Write-Error "installer is missing: $($missing -join ', ')"; exit 1 }
           "all FFmpeg DLLs present"
