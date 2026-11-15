@@ -57,6 +57,7 @@ constexpr const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersio
 struct StartEvent {
     uint64_t sid;
     std::string name, model;
+    int window;
 };
 struct MediaJob {
     std::string action, rid;
@@ -225,12 +226,27 @@ private:
     // PIN pairing (UI thread): the setting, applied to the server and re-announced over mDNS.
     void ApplyPinRequired(bool on);
 
+    // Mirroring windows (UI thread). Window 0 always exists; Pro adds window 1, so two devices can mirror at once.
+    bool CreateGlass(int i);
+    GlassWindow* Win(int i) { return i == 0 ? &glass_ : i == 1 ? glass2_.get() : nullptr; }
+    int WindowOf(uint64_t sid);  // the window showing this live session, or -1
+    int LiveCount();
+    // The window the tray's tools and the sound follow: the one focused last, else the newest session.
+    GlassWindow& Active();
+    void FocusWindow(int i);
+    void SetPro(bool on);      // every window, and how many sessions the server allows at once
+    void UpdateMirrorSinks();
+    void SaveRecordingAtEnd(GlassWindow& g, const wchar_t* why);
+    void OnSessionSize(uint64_t sid, int w, int h);
+
     // TV Mode control pipe (UI thread).
     void OnPipeCommand(const std::string& line);
     void Emit(const std::string& json) { pipe_.Broadcast(json); }
     void EmitState();
     void EmitStopped(uint64_t sid, const char* reason);
-    void EmitLayout(bool byUser);
+    void EmitLayout(int window, bool byUser);
+    GlassWindow& TvGlass();  // the window TV Mode drives (the most recent session)
+    uint64_t TvSid() const { return tvWin_ >= 0 ? live_[tvWin_].sid : 0; }
     void EmitNowPlaying();
     void MediaLoop();
     // AirGlass Pro (UI thread).
@@ -240,16 +256,20 @@ private:
     // Days left in the free Pro trial: license::kTrialDays before the first session, 0 once it's over.
     int TrialDaysLeft() const;
     // Pro tools (UI thread): files go to Pictures\AirGlass and Videos\AirGlass.
-    void TakeScreenshot();
-    void ToggleRecording();
-    std::wstring MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext);
+    void TakeScreenshot(GlassWindow& g);
+    void ToggleRecording(GlassWindow& g);
+    std::wstring MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext, const wchar_t* tag = L"");
 
     HINSTANCE inst_ = nullptr;
     HWND msgWnd_ = nullptr;
     UINT taskbarCreated_ = 0;
     HICON iconBig_ = nullptr, iconSmall_ = nullptr;
     Config cfg_;
-    GlassWindow glass_;
+    static constexpr int kWindows = 2;
+    GlassWindow glass_;                    // the first mirroring window
+    std::unique_ptr<GlassWindow> glass2_;  // Pro: the second, made when Pro is on
+    int active_ = 0;
+    bool twoDevicesAsked_ = false;  // free edition: the Pro dialog about two devices was offered (once per run)
     AudioOutput audio_;
     AirPlayServer server_;
     MdnsResponder mdns_;
@@ -268,10 +288,15 @@ private:
     bool asking_ = false;  // a prompt is open
     ui::PinCard pinCard_;
 
-    // Mirroring session as reported to TV Mode.
-    uint64_t curSid_ = 0;
-    std::string curDevice_, curModel_;
-    int curW_ = 0, curH_ = 0;
+    // Mirroring sessions as reported to TV Mode, per window. TV Mode follows the most recent one (tvWin_); when it
+    // ends while the other still runs, TV Mode follows that one (a fresh "state" event says so).
+    struct Announced {
+        uint64_t sid = 0;
+        std::string device, model;
+        int w = 0, h = 0;
+    };
+    Announced live_[kWindows];
+    int tvWin_ = -1;
     GlassWindow::TvLayout tvDefaults_;
     int pipeClients_ = 0;
     // Music session.
@@ -363,7 +388,7 @@ void App::RenameReceiver() {
     if (renaming_ || cfg_.nameManaged) return;
     renaming_ = true;
     std::wstring name = Utf8ToWide(cfg_.name);
-    HWND owner = glass_.Visible() ? glass_.Hwnd() : msgWnd_;
+    HWND owner = Active().Visible() ? Active().Hwnd() : msgWnd_;
     std::string wanted;
     if (ui::ShowRenameDialog(owner, iconBig_, &name)) wanted = SanitizeReceiverName(WideToUtf8(name));
     if (wanted.empty() || wanted == cfg_.name) {
@@ -505,24 +530,31 @@ void App::ShowTrayMenu() {
     if (cfg_.nameManaged) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Name set by your organisation");
     else AppendMenuW(m, MF_STRING | (renaming_ ? MF_GRAYED : 0), kMenuRename, L"&Rename this PC…");
     if (pipeClients_ > 0) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Connected to TV Mode");
-    if (glass_.Visible()) AppendMenuW(m, MF_STRING, kMenuShow, L"Show mirroring window");
+    GlassWindow& g = Active();
+    int live = LiveCount();
+    if (g.Visible()) AppendMenuW(m, MF_STRING, kMenuShow, live > 1 ? L"Show mirroring windows" : L"Show mirroring window");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    if (glass_.Visible() && glass_.SessionLive()) {
+    if (g.Visible() && g.SessionLive()) {
         bool pro = glass_.Pro();
+        int wi = WindowOf(g.Session());
+        if (live > 1 && wi >= 0) {  // two devices: say which window the tools act on (the one used last)
+            std::wstring which = L"Tools for “" + Utf8ToWide(live_[wi].device) + L"”";
+            AppendMenuW(m, MF_STRING | MF_GRAYED, 0, which.c_str());
+        }
         AppendMenuW(m, MF_STRING, kMenuShot, pro ? L"Save screenshot\tS" : L"Save screenshot (Pro)…");
         std::wstring rec = L"Start recording\tR";
-        if (glass_.Rec().Active()) {
-            int s = int(glass_.Rec().Seconds());
+        if (g.Rec().Active()) {
+            int s = int(g.Rec().Seconds());
             wchar_t t[64];
             swprintf(t, 64, L"Stop recording (%d:%02d)\tR", s / 60, s % 60);
             rec = t;
         }
         AppendMenuW(m, MF_STRING, kMenuRecord, pro ? rec.c_str() : L"Start recording (Pro)…");
-        AppendMenuW(m, MF_STRING | (glass_.ObsMode() ? MF_CHECKED : 0), kMenuObs,
+        AppendMenuW(m, MF_STRING | (g.ObsMode() ? MF_CHECKED : 0), kMenuObs,
                     pro ? L"OBS mode\tO" : L"OBS mode (Pro)…");
         AppendMenuW(m, MF_STRING, kMenuZoom,
-                    !pro ? L"Zoom into a region (Pro)…" : glass_.Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
-        AppendMenuW(m, MF_STRING | (glass_.DrawMode() ? MF_CHECKED : 0), kMenuDraw,
+                    !pro ? L"Zoom into a region (Pro)…" : g.Zoomed() ? L"Zoom out\tZ" : L"Zoom into a region\tZ");
+        AppendMenuW(m, MF_STRING | (g.DrawMode() ? MF_CHECKED : 0), kMenuDraw,
                     pro ? L"Draw on screen\tD" : L"Draw on screen (Pro)…");
     }
     AppendMenuW(m, MF_STRING, kMenuMediaFolder, L"Open screenshots folder");
@@ -584,20 +616,24 @@ void App::ShowTrayMenu() {
     switch (cmd) {
     case kMenuAutostart: SetAutostart(!AutostartEnabled()); break;
     case kMenuLogs: ShellExecuteW(nullptr, L"open", AppDataDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
-    case kMenuShow: glass_.BringToFront(); break;
+    case kMenuShow:
+        for (int i = 0; i < kWindows; ++i)  // the one used last ends up in front
+            if (Win(i) && Win(i) != &g) Win(i)->BringToFront();
+        g.BringToFront();
+        break;
     case kMenuRename: RenameReceiver(); break;
     case kMenuPro: ShowUpgrade(L"Buy once, use it on up to 3 PCs."); break;
     case kMenuShot:
-        if (glass_.Pro()) TakeScreenshot();
+        if (glass_.Pro()) TakeScreenshot(g);
         else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProScreenshot, 0);
         break;
     case kMenuRecord:
-        if (glass_.Pro()) ToggleRecording();
+        if (glass_.Pro()) ToggleRecording(g);
         else PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProRecord, 0);
         break;
-    case kMenuObs: glass_.ToggleObsMode(); break;  // these ask for Pro in the free edition
-    case kMenuZoom: glass_.ToggleRegionZoom(); break;
-    case kMenuDraw: glass_.ToggleDrawMode(); break;
+    case kMenuObs: g.ToggleObsMode(); break;  // these ask for Pro in the free edition
+    case kMenuZoom: g.ToggleRegionZoom(); break;
+    case kMenuDraw: g.ToggleDrawMode(); break;
     case kMenuAskDevices:
         if (cfg_.askManaged) break;
         // Turning it on is Pro; turning it off never is, and a list that is on stays on after the trial, so it
@@ -672,7 +708,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         UINT ev = LOWORD(l);
         if (ev == WM_CONTEXTMENU || ev == WM_RBUTTONUP) ShowTrayMenu();
         else if (ev == WM_LBUTTONUP || ev == NIN_SELECT || ev == NIN_KEYSELECT) {
-            if (glass_.Visible()) glass_.BringToFront();
+            if (Active().Visible()) Active().BringToFront();
             else
                 Balloon(L"AirGlass is ready",
                         L"On your iPhone, iPad or Mac open Screen Mirroring and choose “" + Utf8ToWide(name_) +
@@ -682,7 +718,6 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case kMsgMirrorStart: {
         std::unique_ptr<StartEvent> e(reinterpret_cast<StartEvent*>(l));
-        if (curSid_ && curSid_ != e->sid) EmitStopped(curSid_, "takeover");
 #ifndef AIRGLASS_ALWAYS_PRO
         // Free Pro trial: starts with the first real session, decided before the window opens.
         if (!loopback_ && !Licensed()) {
@@ -693,7 +728,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 LOGI("license: %d-day Pro trial started", license::kTrialDays);
             }
             bool on = TrialDaysLeft() > 0;
-            glass_.SetPro(on);
+            SetPro(on);
             if (starting)
                 Balloon(L"Your 7-day AirGlass Pro trial has started",
                         L"Move and resize the glass window, keep it on top (T), take screenshots (S), record with sound "
@@ -706,50 +741,91 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
         }
 #endif
-        glass_.BeginSession(e->sid, Utf8ToWide(e->name), e->model);
-        if (glass_.Pro() && !loopback_ && !cfg_.licenseKey.empty() && e->sid != curSid_) {
+        int wi = e->window > 0 && e->window < kWindows && Win(e->window) ? e->window : 0;
+        GlassWindow& g = *Win(wi);
+        uint64_t before = live_[wi].sid;
+        // Taken over: this window's previous session (the free edition's one session, or in Pro the oldest of two
+        // when a third device starts), and in the free edition any other session too.
+        for (int j = 0; j < kWindows; ++j) {
+            uint64_t old = live_[j].sid;
+            if (!old || old == e->sid || (j != wi && glass_.Pro())) continue;
+            bool otherDevice = live_[j].device != e->name;
+            LOGI("sessions: \"%s\" takes over window %d from session %llu (\"%s\")", e->name.c_str(), j + 1,
+                 (unsigned long long)old, live_[j].device.c_str());
+            if (GlassWindow* o = Win(j)) {
+                if (o->Session() == old) SaveRecordingAtEnd(*o, L"Another device took over.");
+                if (j != wi) {  // the server allowed two before the trial ended: the free edition keeps one
+                    server_.DisconnectMirror(old);
+                    o->EndSession(old);
+                }
+            }
+            EmitStopped(old, "takeover");
+            if (!glass_.Pro() && otherDevice && !twoDevicesAsked_) {
+                twoDevicesAsked_ = true;
+                PostMessageW(msgWnd_, kMsgUpgrade, GlassWindow::kProTwoDevices, 0);
+            }
+        }
+        // A second window opens beside the first, and under TV Mode the first moves to the other side.
+        RECT beside{};
+        bool haveBeside = false;
+        for (int j = 0; j < kWindows; ++j) {
+            GlassWindow* o = Win(j);
+            if (j == wi || !o || !o->SessionLive() || !o->Visible()) continue;
+            beside = o->TvRect();
+            haveBeside = true;
+            GlassWindow::TvLayout t = o->CurrentTvLayout();
+            if (o->TvControlled() && strcmp(o->TvModeName(), "float") == 0 && t.corner == tvDefaults_.corner) {
+                t.corner ^= 1;  // br <-> bl, tr <-> tl
+                o->ApplyTvLayout(t);
+            }
+        }
+        g.BeginSession(e->sid, Utf8ToWide(e->name), e->model, haveBeside && !g.TvControlled() ? &beside : nullptr);
+        if (glass_.Pro() && !loopback_ && !cfg_.licenseKey.empty() && e->sid != before) {
             ++cfg_.proSessions;  // refund policy counter (see license::kRefundSessions)
             cfg_.Save();
             LOGI("license: Pro session %d", cfg_.proSessions);
         }
-        curSid_ = e->sid;
-        curDevice_ = e->name;
-        curModel_ = e->model;
-        curW_ = curH_ = 0;
-        GlassWindow::TvLayout t = glass_.CurrentTvLayout();
+        live_[wi] = Announced{e->sid, e->name, e->model, 0, 0};
+        tvWin_ = wi;  // TV Mode follows the most recent session
+        // The new session has the sound (the server gave it), unless the other window has the keyboard focus.
+        active_ = wi;
+        for (int j = 0; j < kWindows; ++j)
+            if (j != wi && Win(j) && Win(j)->SessionLive() && GetForegroundWindow() == Win(j)->Hwnd()) FocusWindow(j);
+        LOGI("sessions: session %llu (\"%s\") in window %d; %d mirroring at once", (unsigned long long)e->sid,
+             e->name.c_str(), wi + 1, LiveCount());
+        GlassWindow::TvLayout t = g.CurrentTvLayout();
         Emit(JsonWriter()
                  .Str("event", "started")
-                 .Int("session", (long long)curSid_)
-                 .Str("device", curDevice_)
-                 .Str("model", curModel_)
-                 .Str("mode", glass_.TvModeName())
+                 .Int("session", (long long)e->sid)
+                 .Str("device", e->name)
+                 .Str("model", e->model)
+                 .Str("mode", g.TvModeName())
                  .Str("corner", kCornerNames[std::clamp(t.corner, 0, 3)])
                  .Str("size", kSizeNames[std::clamp(t.size, 0, 2)])
                  .Done());
         return 0;
     }
-    case kMsgMirrorStop:
-        if (uint64_t(w) == curSid_ && glass_.Rec().Active()) {
-            std::wstring file = glass_.Rec().Stop();
-            if (!file.empty())
-                Balloon(L"Recording saved", L"Mirroring ended. Saved to Videos\\AirGlass as " +
-                                                file.substr(file.find_last_of(L'\\') + 1) + L".");
+    case kMsgMirrorStop: {
+        uint64_t sid = uint64_t(w);
+        int wi = WindowOf(sid);
+        if (wi >= 0) {
+            SaveRecordingAtEnd(*Win(wi), L"Mirroring ended.");
+            Win(wi)->EndSession(sid);
         }
-        glass_.EndSession(uint64_t(w));
-        if (uint64_t(w) == curSid_) EmitStopped(curSid_, "sender");
+        for (const Announced& a : live_)
+            if (a.sid == sid) {
+                EmitStopped(sid, "sender");
+                break;
+            }
+        if (!Win(active_) || !Win(active_)->SessionLive())
+            for (int j = 0; j < kWindows; ++j)
+                if (Win(j) && Win(j)->SessionLive()) active_ = j;  // the tools follow the session that is left
         return 0;
+    }
     case kMsgVideoSize:
-        glass_.SetVideoSize(uint64_t(w), int(LOWORD(l)), int(HIWORD(l)));
-        if (uint64_t(w) == curSid_) {
-            curW_ = int(LOWORD(l));
-            curH_ = int(HIWORD(l));
-            Emit(JsonWriter()
-                     .Str("event", "size")
-                     .Int("session", (long long)curSid_)
-                     .Int("width", curW_)
-                     .Int("height", curH_)
-                     .Done());
-        }
+        for (int i = 0; i < kWindows; ++i)
+            if (Win(i)) Win(i)->SetVideoSize(uint64_t(w), int(LOWORD(l)), int(HIWORD(l)));  // the session's own window
+        OnSessionSize(uint64_t(w), int(LOWORD(l)), int(HIWORD(l)));
         return 0;
     case kMsgPipeLine: {
         std::unique_ptr<std::string> line(reinterpret_cast<std::string*>(l));
@@ -760,7 +836,8 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         pipeClients_ = int(w);
         if (pipeClients_ > 0) {
             KillTimer(msgWnd_, kTimerTvGrace);
-            glass_.SetTvControlled(true);
+            for (int i = 0; i < kWindows; ++i)
+                if (Win(i)) Win(i)->SetTvControlled(true);
             EmitState();  // greets the client that just connected
         } else {
             // The TV server may just be restarting: keep the TV behaviour for a few seconds.
@@ -789,7 +866,9 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (w == kTimerPromoteTray && (PromoteTrayIcon() || ++promoteTries_ >= 20)) KillTimer(msgWnd_, kTimerPromoteTray);
         if (w == kTimerTvGrace) {
             KillTimer(msgWnd_, kTimerTvGrace);
-            if (pipeClients_ == 0) glass_.SetTvControlled(false);
+            if (pipeClients_ == 0)
+                for (int i = 0; i < kWindows; ++i)
+                    if (Win(i)) Win(i)->SetTvControlled(false);
         }
         return 0;
     case kMsgUpgrade: {
@@ -800,9 +879,12 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                               : w == GlassWindow::kProDraw     ? L"Drawing on screen is"
                               : w == GlassWindow::kProAllowList ? L"Asking before new devices connect is"
                               : w == GlassWindow::kProPin      ? L"Requiring a code to connect is"
+                              : w == GlassWindow::kProTwoDevices ? L"Mirroring two devices at once is"
                                                                : L"Windowed mode is";
         std::wstring reason = std::wstring(what) + L" part of AirGlass Pro.";
-        reason += cfg_.trialStarted ? L" Your free trial has ended." : L" The free edition mirrors full screen.";
+        reason += cfg_.trialStarted                    ? L" Your free trial has ended."
+                  : w == GlassWindow::kProTwoDevices ? L" The free edition mirrors one at a time."
+                                                       : L" The free edition mirrors full screen.";
         ShowUpgrade(reason);
         return 0;
     }
@@ -828,7 +910,7 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             pinCard_.Hide();
         } else {
             std::wstring wcode = Utf8ToWide(*code);
-            pinCard_.Show(wcode, Utf8ToWide(cfg_.name), glass_.SessionMonitor(), AirPlayServer::kPinCodeSeconds);
+            pinCard_.Show(wcode, Utf8ToWide(cfg_.name), Active().SessionMonitor(), AirPlayServer::kPinCodeSeconds);
             crypto::SecureWipe(wcode.data(), wcode.size() * sizeof(wchar_t));
         }
         crypto::SecureWipe(*code);
@@ -857,12 +939,12 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         cfg_.proUnlocked = 0;
         cfg_.proSessions = 0;
         cfg_.Save();
-        glass_.SetPro(false);
+        SetPro(false);
         Balloon(L"AirGlass Pro is no longer active",
                 L"The license key was refunded or disabled. AirGlass keeps working in full-screen mode.");
         return 0;
     case kMsgShowExisting:
-        if (glass_.Visible()) glass_.BringToFront();
+        if (Active().Visible()) Active().BringToFront();
         else Balloon(L"AirGlass is already running", L"Choose “" + Utf8ToWide(name_) + L"” in Screen Mirroring.");
         return 0;
     case WM_CLOSE:  // "AirGlass.exe --quit" from another process
@@ -874,50 +956,64 @@ LRESULT App::Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
 }
 
 void App::EmitState() {
-    bool live = glass_.SessionLive() && curSid_;
-    GlassWindow::TvLayout t = live ? glass_.CurrentTvLayout() : tvDefaults_;
+    GlassWindow& tg = TvGlass();
+    bool live = tg.SessionLive() && TvSid();
+    const Announced& a = live ? live_[tvWin_] : Announced{};
+    GlassWindow::TvLayout t = live ? tg.CurrentTvLayout() : tvDefaults_;
     NowPlaying np;
     bool music = server_.GetNowPlaying(np);
     Emit(JsonWriter()
              .Str("event", "state")
              .Int("version", 1)
              .Str("receiver", name_)
-             .Int("session", live ? (long long)curSid_ : 0)
-             .Str("device", live ? curDevice_ : std::string())
-             .Str("model", live ? curModel_ : std::string())
-             .Int("width", live ? curW_ : 0)
-             .Int("height", live ? curH_ : 0)
-             .Str("mode", live ? glass_.TvModeName() : LayoutModeName(t.mode))
+             .Int("session", live ? (long long)a.sid : 0)
+             .Str("device", a.device)
+             .Str("model", a.model)
+             .Int("width", a.w)
+             .Int("height", a.h)
+             .Str("mode", live ? tg.TvModeName() : LayoutModeName(t.mode))
              .Str("corner", kCornerNames[std::clamp(t.corner, 0, 3)])
              .Str("size", kSizeNames[std::clamp(t.size, 0, 2)])
-             .Bool("visible", live && glass_.Visible())
+             .Bool("visible", live && tg.Visible())
+             .Int("sessions", LiveCount())
              .Raw("nowplaying", music ? NowPlayingJson(np, false) : "null")
              .Done());
 }
 
 void App::EmitStopped(uint64_t sid, const char* reason) {
     Emit(JsonWriter().Str("event", "stopped").Int("session", (long long)sid).Str("reason", reason).Done());
-    if (sid == curSid_) {
-        curSid_ = 0;
-        curW_ = curH_ = 0;
+    for (Announced& a : live_)
+        if (a.sid == sid) a = Announced{};
+    if (tvWin_ >= 0 && !live_[tvWin_].sid) {
+        // TV Mode now follows the session that is left, if any, and hears about it in a fresh state event.
+        tvWin_ = -1;
+        for (int i = 0; i < kWindows; ++i)
+            if (live_[i].sid) tvWin_ = i;
+        if (tvWin_ >= 0) EmitState();
     }
 }
 
-void App::EmitLayout(bool byUser) {
-    if (!curSid_) return;
-    GlassWindow::TvLayout t = glass_.CurrentTvLayout();
-    RECT r = glass_.TvRect();
+void App::EmitLayout(int window, bool byUser) {
+    GlassWindow* g = Win(window);
+    if (!g || window < 0 || window >= kWindows || !live_[window].sid) return;
+    GlassWindow::TvLayout t = g->CurrentTvLayout();
+    RECT r = g->TvRect();
     char rect[96];
     snprintf(rect, sizeof(rect), "[%ld,%ld,%ld,%ld]", r.left, r.top, r.right - r.left, r.bottom - r.top);
     Emit(JsonWriter()
              .Str("event", "layoutChanged")
-             .Int("session", (long long)curSid_)
-             .Str("mode", glass_.TvModeName())
+             .Int("session", (long long)live_[window].sid)
+             .Str("mode", g->TvModeName())
              .Str("corner", kCornerNames[std::clamp(t.corner, 0, 3)])
              .Str("size", kSizeNames[std::clamp(t.size, 0, 2)])
              .Raw("rect", rect)
              .Str("by", byUser ? "user" : "tv")
              .Done());
+}
+
+GlassWindow& App::TvGlass() {
+    GlassWindow* g = tvWin_ >= 0 ? Win(tvWin_) : nullptr;
+    return g ? *g : glass_;
 }
 
 void App::EmitNowPlaying() {
@@ -953,19 +1049,22 @@ void App::OnPipeCommand(const std::string& line) {
         EmitState();
     } else if (cmd == "defaults") {
         tvDefaults_ = ParseLayout(o, tvDefaults_);
-        glass_.SetTvDefaults(tvDefaults_);
-    } else if (cmd == "layout") {
-        if (glass_.SessionLive()) glass_.ApplyTvLayout(ParseLayout(o, glass_.CurrentTvLayout()));
+        for (int i = 0; i < kWindows; ++i)
+            if (Win(i)) Win(i)->SetTvDefaults(tvDefaults_);
+    } else if (cmd == "layout") {  // these drive the most recent session's window
+        GlassWindow& tg = TvGlass();
+        if (tg.SessionLive()) tg.ApplyTvLayout(ParseLayout(o, tg.CurrentTvLayout()));
     } else if (cmd == "highlight") {
-        glass_.SetTvHighlight(button());
+        TvGlass().SetTvHighlight(button());
     } else if (cmd == "press") {
-        glass_.PressTvButton(button());
+        TvGlass().PressTvButton(button());
     } else if (cmd == "stop") {
-        if (glass_.SessionLive() && curSid_) {
-            uint64_t sid = glass_.Session();
+        GlassWindow& tg = TvGlass();
+        if (tg.SessionLive() && TvSid()) {
+            uint64_t sid = tg.Session();
             LOGI("pipe: TV Mode stopped the mirroring session");
-            server_.DisconnectMirror();
-            glass_.EndSession(sid);
+            server_.DisconnectMirror(sid);
+            tg.EndSession(sid);
             EmitStopped(sid, "tv");
         }
     } else if (cmd == "media") {
@@ -990,14 +1089,14 @@ void App::ShowUpgrade(const std::wstring& reason) {
     }
     upgradeOpen_ = true;
     std::string key, instance;
-    HWND owner = glass_.Visible() ? glass_.Hwnd() : msgWnd_;
+    HWND owner = Active().Visible() ? Active().Hwnd() : msgWnd_;
     if (license::ShowUpgradeDialog(owner, reason, &key, &instance)) {
         cfg_.licenseKey = key;
         cfg_.licenseInstance = instance;
         cfg_.proUnlocked = _time64(nullptr);
         cfg_.proSessions = 0;
         cfg_.Save();
-        glass_.SetPro(true);
+        SetPro(true);
         LOGI("license: AirGlass Pro unlocked");
     }
     upgradeOpen_ = false;
@@ -1009,8 +1108,8 @@ int App::TrialDaysLeft() const {
     return left <= 0 ? 0 : int((left + 86399) / 86400);
 }
 
-// "<known folder>\AirGlass\AirGlass 2026-11-15 10.42.31<ext>"; with ext == nullptr, the folder itself.
-std::wstring App::MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext) {
+// "<known folder>\AirGlass\AirGlass 2026-11-15 10.42.31<tag><ext>"; with ext == nullptr, the folder itself.
+std::wstring App::MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext, const wchar_t* tag) {
     std::wstring dir;
     PWSTR p = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(folder, KF_FLAG_CREATE, nullptr, &p))) dir = p;
@@ -1021,33 +1120,159 @@ std::wstring App::MediaFile(REFKNOWNFOLDERID folder, const wchar_t* ext) {
     if (!ext) return dir;
     SYSTEMTIME t;
     GetLocalTime(&t);
-    wchar_t name[96];
-    swprintf(name, 96, L"\\AirGlass %04d-%02d-%02d %02d.%02d.%02d%s", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
-             t.wSecond, ext);
+    wchar_t name[128];
+    swprintf(name, 128, L"\\AirGlass %04d-%02d-%02d %02d.%02d.%02d%ls%ls", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute,
+             t.wSecond, tag, ext);
     return dir + name;
 }
 
-void App::TakeScreenshot() {
-    if (!glass_.Pro() || !glass_.Visible()) return;
-    glass_.RequestScreenshot(MediaFile(FOLDERID_Pictures, L".png"));
+// The second window's files say so, so two devices' screenshots or recordings never share a name.
+void App::TakeScreenshot(GlassWindow& g) {
+    if (!glass_.Pro() || !g.Visible()) return;
+    g.RequestScreenshot(MediaFile(FOLDERID_Pictures, L".png", &g == &glass_ ? L"" : L" (2)"));
 }
 
-void App::ToggleRecording() {
+void App::ToggleRecording(GlassWindow& g) {
     if (!glass_.Pro()) return;
-    if (glass_.Rec().Active()) {
-        std::wstring file = glass_.Rec().Stop();
+    if (g.Rec().Active()) {
+        std::wstring file = g.Rec().Stop();
         if (!file.empty())
             Balloon(L"Recording saved", L"Saved to Videos\\AirGlass as " + file.substr(file.find_last_of(L'\\') + 1) + L".");
         return;
     }
     std::string err;
-    std::wstring file = MediaFile(FOLDERID_Videos, L".mp4");
-    if (glass_.Rec().Start(file, &err))
-        Balloon(L"Recording", std::wstring(glass_.Rec().HasSound() ? L"Recording the mirrored screen and its sound"
-                                                                   : L"Recording the mirrored screen (it sends no sound)") +
+    std::wstring file = MediaFile(FOLDERID_Videos, L".mp4", &g == &glass_ ? L"" : L" (2)");
+    if (g.Rec().Start(file, &err))
+        Balloon(L"Recording", std::wstring(g.Rec().HasSound() ? L"Recording the mirrored screen and its sound"
+                                                              : L"Recording the mirrored screen (it sends no sound)") +
                                   L" to Videos\\AirGlass. Press R or use the tray menu to stop.");
     else
         Balloon(L"Couldn't start recording", Utf8ToWide(err));
+}
+
+// A recording ends with its session (or when another device takes the window over).
+void App::SaveRecordingAtEnd(GlassWindow& g, const wchar_t* why) {
+    if (!g.Rec().Active()) return;
+    std::wstring file = g.Rec().Stop();
+    if (!file.empty())
+        Balloon(L"Recording saved", std::wstring(why) + L" Saved to Videos\\AirGlass as " +
+                                        file.substr(file.find_last_of(L'\\') + 1) + L".");
+}
+
+void App::OnSessionSize(uint64_t sid, int w, int h) {
+    for (int i = 0; i < kWindows; ++i) {
+        if (live_[i].sid != sid) continue;
+        live_[i].w = w;
+        live_[i].h = h;
+        if (i == tvWin_)  // TV Mode hears about the session it follows
+            Emit(JsonWriter().Str("event", "size").Int("session", (long long)sid).Int("width", w).Int("height", h).Done());
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mirroring windows
+
+bool App::CreateGlass(int i) {
+    GlassWindow::Options opt;
+    opt.pinned = cfg_.pinned;
+    opt.longPortrait = cfg_.longPortrait;
+    opt.longLandscape = cfg_.longLandscape;
+    opt.obs = cfg_.obsMode;
+    opt.index = i;
+    if (i == 1) glass2_ = std::make_unique<GlassWindow>();
+    GlassWindow* g = Win(i);
+    if (!g || !g->Create(inst_, iconBig_, iconSmall_, opt)) {
+        if (i == 1) {
+            LOGE("ui: the second mirroring window couldn't be created; one device at a time");
+            glass2_.reset();
+        }
+        return false;
+    }
+    if (i == 1) LOGI("ui: second mirroring window ready (two devices at once)");
+    g->onUserClose = [this, g] {
+        uint64_t sid = g->Session();
+        server_.DisconnectMirror(sid);
+        g->EndSession(sid);
+        if (!sid) return;
+        for (const Announced& a : live_)
+            if (a.sid == sid) {
+                Emit(JsonWriter().Str("event", "userClosed").Int("session", (long long)sid).Done());
+                EmitStopped(sid, "user");
+                break;
+            }
+    };
+    g->onTvLayoutChanged = [this, i](bool byUser) { EmitLayout(i, byUser); };
+    // Posted, so the dialog never opens inside the glass window's own input handling.
+    g->onUpgradeRequested = [this](int feature) { PostMessageW(msgWnd_, kMsgUpgrade, WPARAM(feature), 0); };
+    g->onScreenshotKey = [this, g] { TakeScreenshot(*g); };
+    g->onRecordToggle = [this, g] { ToggleRecording(*g); };
+    g->onScreenshot = [this](bool ok, const std::wstring& path) {
+        if (ok)
+            Balloon(L"Screenshot saved", L"Saved to Pictures\\AirGlass as " + path.substr(path.find_last_of(L'\\') + 1) +
+                                             L", and the picture is on the clipboard.");
+        else
+            Balloon(L"Screenshot copied", L"The picture is on the clipboard (the PNG file couldn't be saved).");
+    };
+    g->Rec().onAutoStop = [this](const std::wstring& path, const std::string&) {
+        PostMessageW(msgWnd_, kMsgRecordStopped, 0, reinterpret_cast<LPARAM>(new std::wstring(path)));
+    };
+    g->onContentSize = [this](uint64_t sid, int w, int h) { OnSessionSize(sid, w, h); };
+    g->onOptionsChanged = [this, g] {
+        auto o = g->CurrentOptions();
+        cfg_.pinned = o.pinned;
+        cfg_.longPortrait = o.longPortrait;
+        cfg_.longLandscape = o.longLandscape;
+        cfg_.obsMode = o.obs;
+        cfg_.Save();
+    };
+    g->onActivated = [this, i] { FocusWindow(i); };
+    g->SetTvDefaults(tvDefaults_);
+    if (pipeClients_ > 0) g->SetTvControlled(true);
+    return true;
+}
+
+int App::WindowOf(uint64_t sid) {
+    for (int i = 0; i < kWindows; ++i)
+        if (sid && Win(i) && Win(i)->SessionLive() && Win(i)->Session() == sid) return i;
+    return -1;
+}
+
+int App::LiveCount() {
+    int n = 0;
+    for (int i = 0; i < kWindows; ++i)
+        if (Win(i) && Win(i)->SessionLive()) ++n;
+    return n;
+}
+
+GlassWindow& App::Active() {
+    GlassWindow* g = Win(active_);
+    if (g && g->SessionLive()) return *g;
+    for (int i = 0; i < kWindows; ++i)
+        if (Win(i) && Win(i)->SessionLive()) return *Win(i);
+    return glass_;
+}
+
+void App::FocusWindow(int i) {
+    GlassWindow* g = Win(i);
+    if (!g || !g->SessionLive()) return;
+    if (active_ != i && LiveCount() > 1) LOGI("sessions: window %d has the focus; the tools and the sound follow it", i + 1);
+    active_ = i;
+    server_.SetMirrorAudioFocus(g->Session());
+}
+
+// Pro mirrors two devices at once (the second window is made the first time Pro is on); the free edition one, and
+// a new sender takes over.
+void App::SetPro(bool on) {
+    if (on && !glass2_) CreateGlass(1);
+    glass_.SetPro(on);
+    if (glass2_) glass2_->SetPro(on);
+    UpdateMirrorSinks();
+}
+
+void App::UpdateMirrorSinks() {
+    std::vector<FrameSink*> sinks{&glass_};
+    if (glass_.Pro() && glass2_) sinks.push_back(glass2_.get());
+    server_.SetMirrorSinks(sinks);
 }
 
 // Re-checks a stored key once per start. Only a definite "invalid" answer (refund, disabled key)
@@ -1098,46 +1323,11 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     msgWnd_ = CreateWindowExW(0, L"AirGlassTray", L"AirGlass", 0, 0, 0, 0, 0, nullptr, nullptr, inst, nullptr);
     taskbarCreated_ = RegisterWindowMessageW(L"TaskbarCreated");
 
-    GlassWindow::Options opt;
-    opt.pinned = cfg_.pinned;
-    opt.longPortrait = cfg_.longPortrait;
-    opt.longLandscape = cfg_.longLandscape;
-    opt.obs = cfg_.obsMode;
-    if (!glass_.Create(inst, iconBig_, iconSmall_, opt)) {
+    if (!CreateGlass(0)) {
         MessageBoxW(nullptr, L"AirGlass could not initialise Direct3D 11 / DirectComposition.", L"AirGlass",
                     MB_ICONERROR);
         return 1;
     }
-    glass_.onUserClose = [this] {
-        uint64_t sid = glass_.Session();
-        server_.DisconnectMirror();
-        glass_.EndSession(sid);
-        if (sid && sid == curSid_) {
-            Emit(JsonWriter().Str("event", "userClosed").Int("session", (long long)sid).Done());
-            EmitStopped(sid, "user");
-        }
-    };
-    glass_.onTvLayoutChanged = [this](bool byUser) { EmitLayout(byUser); };
-    // Posted, so the dialog never opens inside the glass window's own input handling.
-    glass_.onUpgradeRequested = [this](int feature) { PostMessageW(msgWnd_, kMsgUpgrade, WPARAM(feature), 0); };
-    glass_.onScreenshotKey = [this] { TakeScreenshot(); };
-    glass_.onRecordToggle = [this] { ToggleRecording(); };
-    glass_.onScreenshot = [this](bool ok, const std::wstring& path) {
-        if (ok)
-            Balloon(L"Screenshot saved", L"Saved to Pictures\\AirGlass as " + path.substr(path.find_last_of(L'\\') + 1) +
-                                             L", and the picture is on the clipboard.");
-        else
-            Balloon(L"Screenshot copied", L"The picture is on the clipboard (the PNG file couldn't be saved).");
-    };
-    glass_.Rec().onAutoStop = [this](const std::wstring& path, const std::string&) {
-        PostMessageW(msgWnd_, kMsgRecordStopped, 0, reinterpret_cast<LPARAM>(new std::wstring(path)));
-    };
-    glass_.onContentSize = [this](uint64_t sid, int w, int h) {
-        if (sid != curSid_) return;
-        curW_ = w;
-        curH_ = h;
-        Emit(JsonWriter().Str("event", "size").Int("session", (long long)curSid_).Int("width", w).Int("height", h).Done());
-    };
 
     loopback_ = loopback;
 #ifdef AIRGLASS_ALWAYS_PRO
@@ -1148,16 +1338,8 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     if (loopback) pro = !GetEnvironmentVariableW(L"AIRGLASS_DEBUG_FREE", nullptr, 0);
     else CheckLicenseInBackground();
 #endif
-    glass_.SetPro(pro);
+    SetPro(pro);
     LOGI("edition: %s", Licensed() ? "Pro" : pro ? "Pro trial" : "free (full screen only)");
-    glass_.onOptionsChanged = [this] {
-        auto o = glass_.CurrentOptions();
-        cfg_.pinned = o.pinned;
-        cfg_.longPortrait = o.longPortrait;
-        cfg_.longLandscape = o.longLandscape;
-        cfg_.obsMode = o.obs;
-        cfg_.Save();
-    };
 
     if (!loopback) {
         std::vector<std::string> taken = MdnsResponder::BrowseReceiverNames(1.2);
@@ -1180,8 +1362,8 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
 
     AirPlayServer::Events ev;
     HWND target = msgWnd_;
-    ev.mirrorStarted = [target](uint64_t sid, const std::string& name, const std::string& model) {
-        PostMessageW(target, kMsgMirrorStart, 0, reinterpret_cast<LPARAM>(new StartEvent{sid, name, model}));
+    ev.mirrorStarted = [target](uint64_t sid, const std::string& name, const std::string& model, int window) {
+        PostMessageW(target, kMsgMirrorStart, 0, reinterpret_cast<LPARAM>(new StartEvent{sid, name, model, window}));
     };
     ev.mirrorStopped = [target](uint64_t sid) { PostMessageW(target, kMsgMirrorStop, WPARAM(sid), 0); };
     ev.videoSize = [target](uint64_t sid, int w, int h) {
@@ -1227,6 +1409,7 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
         MessageBoxW(nullptr, L"AirGlass could not open its network port.", L"AirGlass", MB_ICONERROR);
         return 1;
     }
+    UpdateMirrorSinks();  // Pro: two at once
 
     // TV Mode control channel.
     mediaThread_ = std::thread(&App::MediaLoop, this);
@@ -1285,6 +1468,7 @@ int App::Run(HINSTANCE inst, bool background, bool loopback) {
     mdns_.Stop();
     server_.Stop();
     audio_.Stop();
+    if (glass2_) glass2_->Destroy();
     glass_.Destroy();
     DestroyWindow(msgWnd_);
     g_app = nullptr;

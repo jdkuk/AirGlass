@@ -1,8 +1,10 @@
 // airglass_test: verification tool for AirGlass.
 //   airglass_test bplist <dir>              bplist round-trip + cross-check files with Python plistlib
 //   airglass_test mdns                      browse _airplay._tcp / _raop._tcp and print records
-//   airglass_test stream <a.mp4> [b.mp4] [--host H] [--port P] [--seconds S] [--audible]
-//                                           act as an AirPlay sender (full handshake, mirror + audio)
+//   airglass_test stream <a.mp4> [b.mp4] [--host H] [--port P] [--seconds S] [--audible] [--name N]
+//                                           act as an AirPlay sender (full handshake, mirror + audio); several
+//                                           at once, each with its own --name, test two devices mirroring
+//                                           (exit code 3 when the receiver ends the session: taken over)
 //   airglass_test music <alac.m4a> [--art a.jpg] [--pause-at S] [--pause-for S] [--linger S] [--port P]
 //                                           audio-only sender (Music app): ALAC + metadata + DACP remote
 //   airglass_test resampler                 resampler quality vs. the old linear interpolation
@@ -372,6 +374,7 @@ struct SenderSession {
     std::vector<uint8_t> serverEdPk;  // from /info
     int lastCode = 0;                 // status of the last request (the one that failed, on failure)
     uint16_t ntpPort = 0;
+    std::string deviceId = "12:34:56:78:9A:BC";
     SOCKET ntpSock = INVALID_SOCKET;
     std::atomic<bool> stopNtp{false};
     std::atomic<int> ntpPolls{0};
@@ -513,7 +516,7 @@ bool SenderSession::Session(bool mirroring, const char* deviceName) {
     s1.Set("et", Plist::Int(32));
     s1.Set("timingProtocol", Plist::String("NTP"));
     s1.Set("timingPort", Plist::Int(ntpPort));
-    s1.Set("deviceID", Plist::String("12:34:56:78:9A:BC"));
+    s1.Set("deviceID", Plist::String(deviceId));
     s1.Set("macAddress", Plist::String("12:34:56:78:9A:BD"));
     s1.Set("name", Plist::String(deviceName));
     s1.Set("model", Plist::String("iPhone16,2"));
@@ -549,18 +552,30 @@ static int CmdStream(int argc, char** argv) {
     uint16_t port = 7000;
     double seconds = 0;
     bool audible = false;
+    std::string name = "AirGlass Test iPhone";
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--host" && i + 1 < argc) host = argv[++i];
         else if (a == "--port" && i + 1 < argc) port = uint16_t(atoi(argv[++i]));
         else if (a == "--seconds" && i + 1 < argc) seconds = atof(argv[++i]);
         else if (a == "--audible") audible = true;
+        else if (a == "--name" && i + 1 < argc) name = argv[++i];
         else files.push_back(a);
     }
     if (files.empty()) return Fail("no input files");
 
     SenderSession ss;
-    if (!ss.Open(host, port, true, "AirGlass Test iPhone")) return 1;
+    if (name != "AirGlass Test iPhone") {  // another device: its own id, derived from the name
+        uint8_t h[64];
+        crypto::Sha512 sh;
+        sh.Update(name.data(), name.size());
+        sh.Final(h);
+        char id[32];
+        snprintf(id, sizeof(id), "%02X:%02X:%02X:%02X:%02X:%02X", h[0] | 2, h[1], h[2], h[3], h[4], h[5]);
+        ss.deviceId = id;
+    }
+    printf("[sender] \"%s\" (%s)\n", name.c_str(), ss.deviceId.c_str());
+    if (!ss.Open(host, port, true, name.c_str())) return 1;
     Rtsp& rtsp = ss.rtsp;
     const uint8_t* aesKey = ss.aesKey;
     uint8_t* eiv = ss.eiv;
@@ -707,7 +722,10 @@ static int CmdStream(int argc, char** argv) {
                 WrLE64(h + 8, uint64_t((segStart + pts) * 4294967296.0));
                 if (!net::SendAll(ds, h, 128) || !net::SendAll(ds, p.data(), p.size())) {
                     av_packet_unref(pkt);
-                    return Fail("mirror socket closed");
+                    av_packet_free(&pkt);
+                    printf("[stream] the receiver ended the session after %d video frames (taken over?)\n", videoFrames);
+                    fflush(stdout);
+                    return 3;
                 }
                 ++videoFrames;
             } else if (isA && haveAudio) {

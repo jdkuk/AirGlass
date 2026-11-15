@@ -20,6 +20,12 @@ public:
     bool Start(const sockaddr_storage& peer, uint16_t peerControlPort, const AudioFormat& fmt, bool music,
                const uint8_t aesKey[16], const uint8_t aesIv[16], AudioOutput* out, FrameSink* tap = nullptr);
     void Stop();
+    // Mirroring with two devices at once (call before Start): the sound plays only while *focus is `owner` (or 0);
+    // muted, it is still decoded for the tap.
+    void SetAudibleWhen(const std::atomic<uint64_t>* focus, uint64_t owner) {
+        focus_ = focus;
+        owner_ = owner;
+    }
     // FLUSH (pause/seek). nextSeq: first sequence number after the flush (RTP-Info), or -1.
     void Flush(int nextSeq = -1);
     uint16_t DataPort() const { return dataPort_; }
@@ -41,6 +47,10 @@ private:
     void DecodeAndPlay(std::vector<uint8_t>& payload);
     void RequestResend(uint16_t seq, uint16_t count);
     void SetPlaying(bool playing, double at);
+    bool Audible() const {
+        uint64_t f = focus_ ? focus_->load() : 0;
+        return f == 0 || f == owner_;
+    }
 
     SOCKET data_ = INVALID_SOCKET, ctrl_ = INVALID_SOCKET;
     uint16_t dataPort_ = 0, ctrlPort_ = 0;
@@ -55,6 +65,9 @@ private:
     AudioOutput* out_ = nullptr;
     bool acquired_ = false;
     FrameSink* tap_ = nullptr;
+    const std::atomic<uint64_t>* focus_ = nullptr;
+    uint64_t owner_ = 0;
+    bool audible_ = true;
     std::vector<Slot> slots_;
     bool haveNext_ = false;
     uint16_t nextSeq_ = 0, highSeq_ = 0;

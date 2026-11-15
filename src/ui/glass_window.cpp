@@ -1150,7 +1150,7 @@ void GlassWindow::SaveSnapshotLocked(int index) {
     if (GetEnvironmentVariableW(L"AIRGLASS_DEBUG_SNAPSHOT_RAW", nullptr, 0)) {
         // Also keep the real transparency: premultiplied BGRA, top-down (README/marketing shots).
         wchar_t raw[64];
-        swprintf(raw, 64, L"\\snap_%02d_%dx%d.bgra", index, w, h);
+        swprintf(raw, 64, L"\\snap_%ls%02d_%dx%d.bgra", opt_.index ? L"w2_" : L"", index, w, h);
         if (FILE* rf = _wfopen((snapDir_ + raw).c_str(), L"wb")) {
             for (int y = 0; y < h; ++y) fwrite(static_cast<const uint8_t*>(m.pData) + size_t(y) * m.RowPitch, 1, size_t(w) * 4, rf);
             fclose(rf);
@@ -1170,7 +1170,7 @@ void GlassWindow::SaveSnapshotLocked(int index) {
     }
     ctx_->Unmap(staging.Get(), 0);
     wchar_t name[64];
-    swprintf(name, 64, L"\\snap_%02d.bmp", index);
+    swprintf(name, 64, L"\\snap_%ls%02d.bmp", opt_.index ? L"w2_" : L"", index);
     FILE* f = _wfopen((snapDir_ + name).c_str(), L"wb");
     if (!f) return;
     BITMAPFILEHEADER fh{};
@@ -1376,6 +1376,24 @@ RectF GlassWindow::SlabForAspect(const RectF& cur, float aspect) const {
     return ClampToWork(r, mon);
 }
 
+// A second window opens next to the first (on the side with more room), shrunk to fit there if need be. If the
+// first leaves no usable room (it is very large), the new one opens in the usual place, on top.
+RectF GlassWindow::BesideSlab(const RectF& slab, const RectF& other, HMONITOR mon) const {
+    RectF wa = WorkArea(mon).Inflate(-8.0f * dp_);  // as ClampToWork
+    float gap = 2.0f * Margin();  // clear of each other's shadow
+    float roomL = other.x0 - gap - wa.x0, roomR = wa.x1 - (other.x1 + gap);
+    bool right = roomR >= roomL;
+    float room = std::max(roomL, roomR);
+    float w = slab.W(), h = slab.H();
+    float k = std::min({1.0f, room / std::max(w, 1.0f), wa.H() / std::max(h, 1.0f)});
+    w *= k;
+    h *= k;
+    if (std::max(w, h) < 240.0f * dp_) return slab;
+    float x0 = right ? other.x1 + gap : other.x0 - gap - w;
+    float y0 = std::clamp(other.CY() - h * 0.5f, wa.y0, std::max(wa.y0, wa.y1 - h));
+    return ClampToWork(RectF{x0, y0, x0 + w, y0 + h}, mon);
+}
+
 void GlassWindow::SetWindowRectSync(const RectF& winScreen) {
     std::lock_guard<std::mutex> rl(renderMu_);
     RECT nr = winScreen.ToRECT();
@@ -1536,7 +1554,8 @@ void GlassWindow::ApplyObsMode() {
         shared_.obs = on;
     }
     // A fixed title, so an OBS Window Capture source finds the window again in every session.
-    if (hwnd_) SetWindowTextW(hwnd_, on ? L"AirGlass (OBS)" : L"AirGlass");
+    // The second window has its own title, so OBS can capture each one.
+    if (hwnd_) SetWindowTextW(hwnd_, on ? (opt_.index ? L"AirGlass (OBS 2)" : L"AirGlass (OBS)") : L"AirGlass");
     UpdateControls();
     Wake();
 }
@@ -1793,8 +1812,11 @@ void GlassWindow::RememberSize() {
 // ---------------------------------------------------------------------------------------------
 // Session lifecycle
 
-void GlassWindow::BeginSession(uint64_t sid, const std::wstring& deviceName, const std::string& model) {
+void GlassWindow::BeginSession(uint64_t sid, const std::wstring& deviceName, const std::string& model,
+                               const RECT* beside) {
     sid_ = sid;
+    besideValid_ = beside && beside->right > beside->left && beside->bottom > beside->top;
+    if (besideValid_) beside_ = RectF::FromRECT(*beside);
     sessionLive_ = true;
     ResetZoom();
     SetDrawMode(false);
@@ -1816,6 +1838,7 @@ void GlassWindow::BeginSession(uint64_t sid, const std::wstring& deviceName, con
         }
     }
     if (visible_) {  // a new sender took over the window (possibly while it was melting away)
+        besideValid_ = false;  // it stays where it is
         if (!keepHiding) {
             dismissing_ = false;
             tvHiding_ = false;
@@ -1860,6 +1883,9 @@ void GlassWindow::ShowWindowForSession() {
     HMONITOR mon;
     if (tv_) {
         mon = TvMonitor(nullptr);
+    } else if (besideValid_) {
+        RECT b = beside_.ToRECT();
+        mon = MonitorFromRect(&b, MONITOR_DEFAULTTOPRIMARY);
     } else {
         POINT cursor;
         GetCursorPos(&cursor);
@@ -1873,6 +1899,8 @@ void GlassWindow::ShowWindowForSession() {
     hasAnimTarget_ = false;
     tvHidden_ = false;
     RectF slab = tv_ ? TvFloatSlab(tvLayout_, aspect_) : InitialSlab(mon, aspect_);
+    if (!tv_ && besideValid_) slab = BesideSlab(slab, beside_, mon);
+    besideValid_ = false;
     {
         std::lock_guard<std::mutex> lk(stateMu_);
         shared_.aspect = aspect_;
@@ -2327,6 +2355,9 @@ LRESULT GlassWindow::WndProc(UINT m, WPARAM w, LPARAM l) {
     case WM_NCHITTEST: return HitTest(GET_X_LPARAM(l), GET_Y_LPARAM(l));
     case WM_MOUSEACTIVATE:
         if (tv_) return MA_NOACTIVATE;  // TV Mode keeps the keyboard/remote focus
+        break;
+    case WM_ACTIVATE:
+        if (LOWORD(w) != WA_INACTIVE && sessionLive_ && onActivated) onActivated();
         break;
     case WM_NCACTIVATE: return DefWindowProcW(hwnd_, m, w, -1);
     case WM_NCPAINT: return 0;

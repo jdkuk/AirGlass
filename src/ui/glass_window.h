@@ -19,6 +19,7 @@ public:
         int longPortrait = 0;   // remembered slab long side (px) per orientation
         int longLandscape = 0;
         bool obs = false;       // OBS mode (Pro)
+        int index = 0;          // 0 = the first window, 1 = the second (Pro: two devices at once)
     };
     // Placement requested by TV Mode (over the control pipe).
     struct TvLayout {
@@ -38,7 +39,9 @@ public:
     void Destroy();
 
     // Session lifecycle (UI thread).
-    void BeginSession(uint64_t sid, const std::wstring& deviceName, const std::string& model);
+    // beside: the other mirroring window's glass on screen; a window that opens now goes next to it, not on top.
+    void BeginSession(uint64_t sid, const std::wstring& deviceName, const std::string& model,
+                      const RECT* beside = nullptr);
     void EndSession(uint64_t sid);
     void SetVideoSize(uint64_t sid, int w, int h);
     uint64_t Session() const { return sid_; }
@@ -69,14 +72,16 @@ public:
     HMONITOR SessionMonitor() const;
 
     std::function<void()> onUserClose;
+    std::function<void()> onActivated;  // the window got the focus (the tools and the sound follow it)
     std::function<void()> onOptionsChanged;
     std::function<void(bool byUser)> onTvLayoutChanged;
     // A Pro feature was used in the free edition: kProWindow (leaving full screen), kProScreenshot, kProRecord,
     // kProObs (OBS mode), kProZoom (region zoom), kProDraw (drawing on the picture); kProAllowList (asking before
-    // new devices connect) and kProPin (requiring a code to connect) come from the tray menu.
+    // new devices connect) and kProPin (requiring a code to connect) come from the tray menu; kProTwoDevices (a
+    // second device took over the session) from the app.
     enum ProFeature {
         kProWindow = 0, kProScreenshot = 1, kProRecord = 2, kProObs = 3, kProZoom = 4, kProDraw = 5, kProAllowList = 6,
-        kProPin = 7
+        kProPin = 7, kProTwoDevices = 8
     };
     std::function<void(int feature)> onUpgradeRequested;
 
@@ -219,6 +224,7 @@ private:
     RectF ClampToWork(RectF r, HMONITOR mon) const;
     RectF InitialSlab(HMONITOR mon, float aspect) const;
     RectF SlabForAspect(const RectF& cur, float aspect) const;
+    RectF BesideSlab(const RectF& slab, const RectF& other, HMONITOR mon) const;
     void SetWindowRectSync(const RectF& winScreen);
     void AnimateSlabTo(const RectF& targetScreen);
     void OnExternalResize();
@@ -307,6 +313,8 @@ private:
     float aspect_ = 0.4613f;
     int vidW_ = 0, vidH_ = 0, contentW_ = 0;  // decoded frame size and the picture width inside it
     uint64_t sid_ = 0;
+    bool besideValid_ = false;
+    RectF beside_;  // the other window's glass when this session opened (screen px)
     RectF restoreSlab_;
     bool pendingShrink_ = false;
     RectF shrinkTo_;

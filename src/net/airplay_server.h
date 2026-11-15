@@ -41,7 +41,9 @@ struct ReceiverInfo {
 class AirPlayServer {
 public:
     struct Events {
-        std::function<void(uint64_t sid, const std::string& deviceName, const std::string& model)> mirrorStarted;
+        // window: which of the sinks (SetMirrorSinks) the session's video goes to.
+        std::function<void(uint64_t sid, const std::string& deviceName, const std::string& model, int window)>
+            mirrorStarted;
         std::function<void(uint64_t sid)> mirrorStopped;
         std::function<void(uint64_t sid, int w, int h)> videoSize;
         // Anything about the music session changed; read it with GetNowPlaying(). Any thread.
@@ -63,13 +65,20 @@ public:
     AirPlayServer();
     ~AirPlayServer();
     bool Start(const ReceiverInfo& info, uint16_t preferredPort, FrameSink* video, AudioOutput* audio, Events ev);
+    // Concurrent mirroring (any thread): one session per sink, at most sinks.size() at once (Start sets one).
+    // When all are in use, a new sender takes over the oldest session (with one sink: the current one) and its
+    // sink. Sessions already running on a sink that is no longer listed keep it until a new sender needs room.
+    void SetMirrorSinks(const std::vector<FrameSink*>& sinks);
+    // Only one mirroring session's sound plays at once: this one's (the window focused last). A new session
+    // takes the sound; when the one that has it ends, the most recent other session gets it.
+    void SetMirrorAudioFocus(uint64_t sid);
     void Stop();
     uint16_t Port() const { return port_; }
     // Live rename: /info answers with the new name (mDNS is re-announced by the caller).
     void SetName(const std::string& name);
     std::string Name();
-    // Drop the active mirroring sender (user closed the window).
-    void DisconnectMirror();
+    // Drop a mirroring sender (user closed its window).
+    void DisconnectMirror(uint64_t sid);
     // Current music session; false (and out.active = false) when there is none.
     bool GetNowPlaying(NowPlaying& out);
     // Remote control of the music sender: playpause, play, pause, next, prev, volume (0..1).
@@ -90,8 +99,10 @@ private:
     class Connection;
     friend class Connection;
     void AcceptLoop();
-    void ClaimMirror(const std::shared_ptr<Connection>& c);
+    // A connection sets up its mirror stream: the sink it draws on (taking over the oldest session if needed).
+    FrameSink* ClaimMirror(const std::shared_ptr<Connection>& c, int* window);
     void ReleaseMirror(Connection* c);
+    void ApplyFocusVolume(const std::shared_ptr<Connection>& c);
     void ClaimAudio(const std::shared_ptr<Connection>& c);
     void ReleaseAudio(Connection* c);
     void Reap();
@@ -106,7 +117,6 @@ private:
     ReceiverInfo info_;
     std::mutex nameMu_;
     std::string name_;  // info_.name, renamable while running (guarded by nameMu_)
-    FrameSink* video_ = nullptr;
     AudioOutput* audio_ = nullptr;
     Events ev_;
     SOCKET listen_ = INVALID_SOCKET;
@@ -116,7 +126,17 @@ private:
 
     std::mutex mu_;
     std::vector<std::shared_ptr<Connection>> conns_;
-    std::weak_ptr<Connection> mirror_;
+    // Mirroring sessions, oldest first, and the sink each one draws on (guarded by mu_).
+    struct MirrorClaim {
+        std::weak_ptr<Connection> conn;
+        uint64_t id = 0;
+        int sink = 0;  // index in sinks_ when it was claimed
+        FrameSink* ptr = nullptr;
+    };
+    std::vector<FrameSink*> sinks_;
+    std::vector<MirrorClaim> mirrors_;
+    // The mirroring session whose sound plays (0 = none yet); read by its audio streams.
+    std::atomic<uint64_t> audioFocus_{0};
     std::weak_ptr<Connection> audioConn_;  // the music (audio-only) session, if any
     uint64_t nextId_ = 1;
     std::atomic<uint32_t> artworkSeq_{0};

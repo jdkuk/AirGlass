@@ -159,6 +159,8 @@ public:
     }
     bool Done() const { return done_; }
     uint64_t Id() const { return id_; }
+    // The sender's last AirPlay volume (dB), or a positive value if it sent none.
+    float VolumeDb() const { return volumeDb_; }
     void SnapshotNowPlaying(NowPlaying& out);
     std::string Media(const std::string& action, double value);
 
@@ -223,6 +225,8 @@ private:
     std::unique_ptr<MirrorStream> mirror_;
     std::unique_ptr<AudioStream> audio_;
     std::atomic<bool> mirroring_{false};
+    FrameSink* mirrorSink_ = nullptr;  // the window this session's video (and its sound, for recording) goes to
+    std::atomic<float> volumeDb_{1.0f};
 
     // Music (audio-only) session state, guarded by npMu_.
     std::mutex npMu_;
@@ -810,14 +814,17 @@ void AirPlayServer::Connection::Setup(const Request& req, Response& resp) {
                     if (srv_->ev_.videoSize) srv_->ev_.videoSize(id_, w, h);
                 };
                 cb.onEnded = [this] { NotifyMirrorStopped(); };
-                if (!mirror_->Start(aesKey_, scid, srv_->video_, cb)) {
+                int window = 0;
+                FrameSink* sink = srv_->ClaimMirror(shared_from_this(), &window);
+                if (!sink || !mirror_->Start(aesKey_, scid, sink, cb)) {
                     mirror_.reset();
+                    if (!mirroring_) srv_->ReleaseMirror(this);
                     resp.closeAfter = true;
                     continue;
                 }
-                srv_->ClaimMirror(shared_from_this());
+                mirrorSink_ = sink;
                 if (!mirroring_.exchange(true)) {
-                    if (srv_->ev_.mirrorStarted) srv_->ev_.mirrorStarted(id_, devName_, devModel_);
+                    if (srv_->ev_.mirrorStarted) srv_->ev_.mirrorStarted(id_, devName_, devModel_, window);
                 }
                 Plist st = Plist::Dict();
                 st.Set("dataPort", Plist::Int(mirror_->Port()));
@@ -845,9 +852,11 @@ void AirPlayServer::Connection::Setup(const Request& req, Response& resp) {
                 }
                 auto stream = std::make_unique<AudioStream>();
                 if (music) stream->onPlaying = [this](bool playing, double at) { OnPlaying(playing, at); };
-                // Mirroring audio also goes to the window's recorder.
+                // Mirroring audio is heard only while this session has the sound (two at once), and always goes to
+                // its own window's recorder.
+                else stream->SetAudibleWhen(&srv_->audioFocus_, id_);
                 if (!stream->Start(peer_, cport, af, music, aesKey_, aesIv_, srv_->audio_,
-                                   music ? nullptr : srv_->video_)) {
+                                   music ? nullptr : mirrorSink_)) {
                     LOGE("rtsp[%llu]: audio stream setup failed", (unsigned long long)id_);
                     continue;
                 }
@@ -923,7 +932,10 @@ void AirPlayServer::Connection::SetParameter(const Request& req, Response& resp)
             pos = e == std::string::npos ? body.size() : e + 1;
             if (line.rfind("volume:", 0) == 0) {
                 float db = float(atof(line.c_str() + 7));
-                if (srv_->audio_) srv_->audio_->SetVolumeDb(db);
+                volumeDb_ = db;
+                // A mirroring session without the sound keeps its volume for when it gets it.
+                uint64_t focus = srv_->audioFocus_;
+                if (srv_->audio_ && (music || !mirroring_ || focus == 0 || focus == id_)) srv_->audio_->SetVolumeDb(db);
                 LOGI("rtsp[%llu]: volume %.2f dB", (unsigned long long)id_, db);
                 if (music) NotifyNowPlaying();
             } else if (line.rfind("progress:", 0) == 0) {
@@ -1229,7 +1241,10 @@ bool AirPlayServer::Start(const ReceiverInfo& info, uint16_t preferredPort, Fram
                           Events ev) {
     info_ = info;
     SetName(info.name);
-    video_ = video;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        sinks_ = {video};
+    }
     audio_ = audio;
     ev_ = std::move(ev);
     for (uint16_t candidate : {preferredPort, uint16_t(7000), uint16_t(7100), uint16_t(7200), uint16_t(0)}) {
@@ -1301,24 +1316,89 @@ void AirPlayServer::Reap() {
     for (auto& d : dead) d->Join();
 }
 
-void AirPlayServer::ClaimMirror(const std::shared_ptr<Connection>& c) {
-    std::shared_ptr<Connection> old;
+FrameSink* AirPlayServer::ClaimMirror(const std::shared_ptr<Connection>& c, int* window) {
+    std::vector<std::shared_ptr<Connection>> kick;
+    FrameSink* sink = nullptr;
+    size_t live = 0, slots = 0;
     {
         std::lock_guard<std::mutex> lk(mu_);
-        old = mirror_.lock();
-        mirror_ = c;
+        mirrors_.erase(std::remove_if(mirrors_.begin(), mirrors_.end(), [](const MirrorClaim& m) { return m.conn.expired(); }),
+                       mirrors_.end());
+        for (const MirrorClaim& m : mirrors_)
+            if (m.id == c->Id()) {  // the same session sets up its stream again
+                *window = m.sink;
+                return m.ptr;
+            }
+        slots = sinks_.size();
+        if (slots == 0) return nullptr;
+        // Full: the oldest session makes room (with one sink this is the familiar takeover).
+        while (mirrors_.size() >= slots) {
+            if (auto old = mirrors_.front().conn.lock()) kick.push_back(old);
+            mirrors_.erase(mirrors_.begin());
+        }
+        int idx = 0;
+        while (std::any_of(mirrors_.begin(), mirrors_.end(), [idx](const MirrorClaim& m) { return m.sink == idx; })) ++idx;
+        sink = sinks_[size_t(idx)];
+        mirrors_.push_back(MirrorClaim{c, c->Id(), idx, sink});
+        *window = idx;
+        live = mirrors_.size();
+        audioFocus_ = c->Id();  // the new session has the sound
     }
-    if (old && old != c) {
-        LOGI("rtsp: connection %llu takes over mirroring from %llu", (unsigned long long)c->Id(),
-             (unsigned long long)old->Id());
+    for (auto& old : kick) {
+        if (slots == 1)
+            LOGI("rtsp: connection %llu takes over mirroring from %llu", (unsigned long long)c->Id(),
+                 (unsigned long long)old->Id());
+        else
+            LOGI("rtsp: connection %llu takes over the oldest mirroring session (connection %llu)",
+                 (unsigned long long)c->Id(), (unsigned long long)old->Id());
         old->Kick();
     }
+    LOGI("rtsp: connection %llu mirrors to window %d (%zu of %zu at once)", (unsigned long long)c->Id(), *window + 1,
+         live, slots);
+    ApplyFocusVolume(c);
+    return sink;
 }
 
 void AirPlayServer::ReleaseMirror(Connection* c) {
+    std::shared_ptr<Connection> next;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        mirrors_.erase(std::remove_if(mirrors_.begin(), mirrors_.end(),
+                                      [c](const MirrorClaim& m) { return m.id == c->Id() || m.conn.expired(); }),
+                       mirrors_.end());
+        if (audioFocus_ == c->Id()) {  // the sound goes to the most recent other session
+            next = mirrors_.empty() ? nullptr : mirrors_.back().conn.lock();
+            audioFocus_ = next ? next->Id() : 0;
+        }
+    }
+    if (next) {
+        LOGI("rtsp: the sound now comes from connection %llu", (unsigned long long)next->Id());
+        ApplyFocusVolume(next);
+    }
+}
+
+void AirPlayServer::SetMirrorSinks(const std::vector<FrameSink*>& sinks) {
     std::lock_guard<std::mutex> lk(mu_);
-    auto m = mirror_.lock();
-    if (m.get() == c) mirror_.reset();
+    sinks_ = sinks;
+}
+
+void AirPlayServer::SetMirrorAudioFocus(uint64_t sid) {
+    std::shared_ptr<Connection> c;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (audioFocus_ == sid) return;
+        for (const MirrorClaim& m : mirrors_)
+            if (m.id == sid) c = m.conn.lock();
+        if (!c) return;
+        audioFocus_ = sid;
+    }
+    LOGI("rtsp: the sound now comes from connection %llu (its window has the focus)", (unsigned long long)sid);
+    ApplyFocusVolume(c);
+}
+
+void AirPlayServer::ApplyFocusVolume(const std::shared_ptr<Connection>& c) {
+    float db = c->VolumeDb();
+    if (audio_ && db <= 0.0f) audio_->SetVolumeDb(db);
 }
 
 void AirPlayServer::ClaimAudio(const std::shared_ptr<Connection>& c) {
@@ -1354,11 +1434,12 @@ std::string AirPlayServer::MediaCommand(const std::string& action, double value)
     return c->Media(action, value);
 }
 
-void AirPlayServer::DisconnectMirror() {
+void AirPlayServer::DisconnectMirror(uint64_t sid) {
     std::shared_ptr<Connection> m;
     {
         std::lock_guard<std::mutex> lk(mu_);
-        m = mirror_.lock();
+        for (const MirrorClaim& c : mirrors_)
+            if (c.id == sid) m = c.conn.lock();
     }
     if (m) {
         LOGI("rtsp: disconnecting mirroring sender %llu", (unsigned long long)m->Id());

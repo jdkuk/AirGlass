@@ -36,6 +36,7 @@ private:
     static constexpr size_t kTaps = SincResampler::kTaps;
     std::vector<float> ring_;  // interleaved stereo; the first kTaps frames are mirrored past the end
     std::atomic<size_t> write_{0}, read_{0};
+    std::mutex writeMu_;  // one writer at a time (a music and a mirroring stream can overlap)
     std::atomic<bool> flushReq_{false};
     std::atomic<int> inRate_{44100};
     std::atomic<int> profile_{0};

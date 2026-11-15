@@ -76,6 +76,7 @@ void AudioOutput::Configure(int sampleRate, Profile profile) {
 }
 
 void AudioOutput::Write(const float* in, size_t frames) {
+    std::lock_guard<std::mutex> lk(writeMu_);
     if (!running_ || ring_.empty()) return;
     size_t w = write_.load(std::memory_order_relaxed);
     size_t r = read_.load(std::memory_order_acquire);

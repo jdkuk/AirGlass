@@ -106,6 +106,19 @@ jobs:
           Get-Content "$env:LOCALAPPDATA/AirGlass/airglass-loopback.log" | Select-String 'pin|pair|470|403' | Select-Object -Last 40
           if ($rc -ne 0) { exit 1 }
 
+      - name: Loopback two devices at once (Pro), and a third takes over the oldest
+        timeout-minutes: 4
+        run: |
+          Start-Sleep 2
+          Copy-Item "$env:LOCALAPPDATA/AirGlass/airglass-loopback.log" "$env:LOCALAPPDATA/AirGlass/airglass-loopback-pin.log" -ErrorAction SilentlyContinue
+          ./tools/two_devices.ps1 -Snaps "$env:RUNNER_TEMP/snaps-two"
+
+      - name: Loopback free edition (a second device takes over)
+        timeout-minutes: 3
+        run: |
+          Start-Sleep 2
+          ./tools/two_devices.ps1 -Free -Snaps "$env:RUNNER_TEMP/snaps-free"
+
       - name: Collect logs
         if: always()
         run: |
@@ -120,6 +133,8 @@ jobs:
           path: |
             ${{ runner.temp }}/logs
             ${{ runner.temp }}/snaps
+            ${{ runner.temp }}/snaps-two
+            ${{ runner.temp }}/snaps-free
           if-no-files-found: ignore
 
       - name: Upload build

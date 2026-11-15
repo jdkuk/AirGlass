@@ -48,9 +48,10 @@ bool AudioStream::Start(const sockaddr_storage& peer, uint16_t peerControlPort, 
         dump_ = _wfopen(dumpPath, L"wb");
         LOGI("debug: dumping decoded audio to %s", WideToUtf8(dumpPath).c_str());
     }
+    audible_ = Audible();
     if (out_) {
         out_->Acquire();
-        out_->Configure(fmt.sampleRate, music ? AudioOutput::Profile::Music : AudioOutput::Profile::Mirror);
+        if (audible_) out_->Configure(fmt.sampleRate, music ? AudioOutput::Profile::Music : AudioOutput::Profile::Mirror);
         acquired_ = true;
     }
     tap_ = tap;
@@ -128,7 +129,16 @@ void AudioStream::DecodeAndPlay(std::vector<uint8_t>& payload) {
         for (size_t i = 0; i < s.size(); ++i) s[i] = int16_t(std::clamp(std::lrint(pcm_[i] * 32768.0f), -32768L, 32767L));
         fwrite(s.data(), sizeof(int16_t), s.size(), dump_);
     }
-    if (frames > 0 && out_) out_->Push(pcm_.data(), size_t(frames));
+    bool audible = Audible();
+    if (audible != audible_) {  // another mirroring window got the focus, or this one did
+        audible_ = audible;
+        if (audible && out_) {
+            out_->Configure(fmt_.sampleRate, AudioOutput::Profile::Mirror);
+            out_->Flush();  // drop the other session's last few milliseconds
+        }
+        LOGI("audio: mirroring sound %s", audible ? "on (its window has the focus)" : "muted (another window has the focus)");
+    }
+    if (frames > 0 && out_ && audible_) out_->Push(pcm_.data(), size_t(frames));
     if (frames > 0 && tap_) tap_->OnDecodedAudio(pcm_.data(), size_t(frames));
     else if (frames < 0 && music_ && out_) out_->PushSilence(size_t(fmt_.spf));  // keep timing
 }
