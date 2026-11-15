@@ -33,6 +33,7 @@ void NtpClient::Stop() {
 void NtpClient::Run() {
     int misses = 0;
     bool reported = false;
+    bool answered = false;  // the sender has answered at least once
     double nextSend = 0;
     bool awaiting = false;
     double sentAt = 0;
@@ -52,8 +53,15 @@ void NtpClient::Run() {
             nextSend = now + 2.0;
             if (++misses >= 8 && !reported) {
                 reported = true;
-                LOGW("ntp: sender stopped answering timing requests");
-                if (onDead_) onDead_();
+                if (answered) {
+                    LOGW("ntp: sender stopped answering timing requests");
+                    if (onDead_) onDead_();
+                } else {
+                    // Never answered at all: a VPN or NAT (e.g. Tailscale subnet routes) in between hides the
+                    // sender's timing port. The stream itself still works, so keep the session; the mirror
+                    // connection closing is what ends it.
+                    LOGW("ntp: sender never answered timing requests (VPN or NAT in between?); keeping the session");
+                }
             }
         }
         if (net::WaitReadable(sock_, 100) <= 0) continue;
@@ -69,6 +77,8 @@ void NtpClient::Run() {
             double rtt = (double(int64_t(t3 - t0)) - double(int64_t(t2 - t1))) / 4294967296.0;
             if (misses > 0 || reported) LOGI("ntp: sender answering again (rtt %.1f ms)", rtt * 1000);
             misses = 0;
+            answered = true;
+            reported = false;
             awaiting = false;
             nextSend = NowSeconds() + 3.0;
         } else if (type == 0x52) {  // the sender polling us: answer
