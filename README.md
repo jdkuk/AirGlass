@@ -96,7 +96,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | Move, resize, smooth zoom | | ✅ |
 | Keep on top, corner float | | ✅ |
 | Screenshots: PNG of the glass window + the picture on the clipboard (<kbd>S</kbd>) | | ✅ |
-| Record the mirrored screen to MP4, original quality, no re-encode (<kbd>R</kbd>) | | ✅ |
+| Record the mirrored screen and its sound to MP4, picture in original quality, no re-encode (<kbd>R</kbd>) | | ✅ |
 | OBS mode: a chroma-key green window for OBS Window Capture (<kbd>O</kbd>) | | ✅ |
 | Region zoom: drag a rectangle to zoom into part of the picture (<kbd>Z</kbd>) | | ✅ |
 | Draw on screen: pen, arrow and highlighter on the mirrored picture (<kbd>D</kbd>) | | ✅ |

@@ -6,6 +6,7 @@
 //   airglass_test music <alac.m4a> [--art a.jpg] [--pause-at S] [--pause-for S] [--linger S] [--port P]
 //                                           audio-only sender (Music app): ALAC + metadata + DACP remote
 //   airglass_test resampler                 resampler quality vs. the old linear interpolation
+//   airglass_test record <h264.mp4> <dir>   Pro recorder: picture + sound in sync, sound starting late, no sound
 //   airglass_test resolve <instance> <type> one-shot mDNS SRV lookup
 //   airglass_test license activate|validate <key> <pc name|instance id>
 //                                           Lemon Squeezy license round trip (AirGlass Pro)
@@ -17,6 +18,7 @@
 #include "crypto/crypto.h"
 #include "crypto/fairplay.h"
 #include "license.h"
+#include "media/recorder.h"
 #include "media/resampler.h"
 #include "net/bplist.h"
 #include "net/mdns.h"
@@ -1112,6 +1114,162 @@ static int CmdResampler() {
 }
 
 // One-shot mDNS SRV lookup (the code AirGlass uses to find a sender's DACP remote).
+// ---------------------------------------------------------------------------------------------
+// Recorder: feeds an H.264 file in real time as the mirror thread would (Annex-B, SPS/PPS on keyframes) and a
+// 440 Hz tone as the audio thread would (480-frame blocks, starting late), then reads the MP4 back.
+
+struct RecordResult {
+    int streams = 0;
+    bool h264 = false, aac = false;
+    double videoEnd = 0, audioEnd = 0, toneAt = -1;  // track ends and the first loud sample (s)
+};
+
+static bool ReadBack(const std::string& path, RecordResult& r) {
+    AVFormatContext* f = nullptr;
+    if (avformat_open_input(&f, path.c_str(), nullptr, nullptr) < 0) return false;
+    avformat_find_stream_info(f, nullptr);
+    r.streams = int(f->nb_streams);
+    int vIdx = -1, aIdx = -1;
+    AVCodecContext* dec = nullptr;
+    for (unsigned i = 0; i < f->nb_streams; ++i) {
+        AVCodecParameters* par = f->streams[i]->codecpar;
+        if (par->codec_id == AV_CODEC_ID_H264) {
+            r.h264 = true;
+            vIdx = int(i);
+        }
+        if (par->codec_id == AV_CODEC_ID_AAC) {
+            r.aac = true;
+            aIdx = int(i);
+            const AVCodec* c = avcodec_find_decoder(AV_CODEC_ID_AAC);
+            dec = avcodec_alloc_context3(c);
+            avcodec_parameters_to_context(dec, par);
+            if (avcodec_open2(dec, c, nullptr) < 0) avcodec_free_context(&dec);
+        }
+    }
+    AVPacket* pkt = av_packet_alloc();
+    AVFrame* fr = av_frame_alloc();
+    while (av_read_frame(f, pkt) >= 0) {
+        double tb = av_q2d(f->streams[pkt->stream_index]->time_base);
+        double end = double(pkt->pts + pkt->duration) * tb;
+        if (pkt->stream_index == vIdx) r.videoEnd = std::max(r.videoEnd, end);
+        if (pkt->stream_index == aIdx) {
+            r.audioEnd = std::max(r.audioEnd, end);
+            if (dec && r.toneAt < 0 && avcodec_send_packet(dec, pkt) >= 0) {
+                while (avcodec_receive_frame(dec, fr) >= 0) {
+                    const float* l = reinterpret_cast<const float*>(fr->data[0]);
+                    for (int i = 0; r.toneAt < 0 && i < fr->nb_samples; ++i)
+                        if (std::fabs(l[i]) > 0.1f) r.toneAt = double(fr->best_effort_timestamp) * tb + double(i) / fr->sample_rate;
+                }
+            }
+        }
+        av_packet_unref(pkt);
+    }
+    av_frame_free(&fr);
+    av_packet_free(&pkt);
+    if (dec) avcodec_free_context(&dec);
+    avformat_close_input(&f);
+    return true;
+}
+
+// One recording: video from t=0, the recording starts at about `startAt` (*startedAt: exactly), sound (if any)
+// from `toneFrom` seconds.
+static bool RecordOnce(Media& m, const std::string& out, double startAt, double toneFrom, bool sound, double* startedAt) {
+    // avcC -> Annex-B SPS/PPS
+    const std::vector<uint8_t>& a = m.avcc;
+    std::vector<uint8_t> config;
+    size_t p = 5;
+    for (int set = 0; set < 2 && p < a.size(); ++set) {
+        int count = set == 0 ? (a[p++] & 0x1F) : a[p++];
+        for (int i = 0; i < count && p + 2 <= a.size(); ++i) {
+            size_t len = RdBE16(&a[p]);
+            p += 2;
+            static const uint8_t kStart[4] = {0, 0, 0, 1};
+            config.insert(config.end(), kStart, kStart + 4);
+            config.insert(config.end(), a.begin() + long(p), a.begin() + long(p + len));
+            p += len;
+        }
+    }
+    av_seek_frame(m.fmt, m.vIdx, 0, AVSEEK_FLAG_BACKWARD);
+    Recorder rec;
+    rec.SetFrameSize(m.w, m.h);
+    std::atomic<bool> done{false};
+    double t0 = NowSeconds();
+    std::thread audio;
+    if (sound) {
+        rec.AudioStarted(44100);
+        audio = std::thread([&] {
+            std::vector<float> block(480 * 2);
+            int64_t n = 0;
+            while (!done) {
+                double due = toneFrom + double(n) / 44100.0;
+                double wait = t0 + due - NowSeconds();
+                if (wait > 0) Sleep(DWORD(wait * 1000.0));
+                for (int i = 0; i < 480; ++i) {
+                    float v = 0.5f * std::sin(float(2.0 * 3.14159265358979 * 440.0 * double(n + i) / 44100.0));
+                    block[2 * i] = block[2 * i + 1] = v;
+                }
+                rec.FeedAudio(block.data(), 480);
+                n += 480;
+            }
+            rec.AudioStopped();
+        });
+    }
+    AVPacket* pkt = av_packet_alloc();
+    bool started = false;
+    std::string err;
+    while (av_read_frame(m.fmt, pkt) >= 0) {
+        if (pkt->stream_index == m.vIdx) {
+            double ts = double(pkt->pts) * av_q2d(m.fmt->streams[m.vIdx]->time_base);
+            double wait = t0 + ts - NowSeconds();
+            if (wait > 0) Sleep(DWORD(wait * 1000.0));
+            std::vector<uint8_t> au;
+            if (pkt->flags & AV_PKT_FLAG_KEY) au = config;
+            for (int q = 0; q + 4 <= pkt->size;) {
+                int len = int(RdBE32(pkt->data + q));
+                static const uint8_t kStart[4] = {0, 0, 0, 1};
+                au.insert(au.end(), kStart, kStart + 4);
+                au.insert(au.end(), pkt->data + q + 4, pkt->data + std::min(pkt->size, q + 4 + len));
+                q += 4 + len;
+            }
+            rec.Feed(au.data(), au.size());
+            if (!started && NowSeconds() - t0 >= startAt) {
+                *startedAt = NowSeconds() - t0;
+                started = rec.Start(Utf8ToWide(out), &err);
+                if (!started) printf("[record] start failed: %s\n", err.c_str());
+                else printf("[record] started at %.3f s, sound track: %s\n", *startedAt, rec.HasSound() ? "yes" : "no");
+            }
+        }
+        av_packet_unref(pkt);
+    }
+    av_packet_free(&pkt);
+    done = true;
+    if (audio.joinable()) audio.join();
+    return started && !rec.Stop().empty();
+}
+
+static int CmdRecord(const std::string& in, const std::string& dir) {
+    Media m;
+    if (!m.Open(in)) return Fail("open test media");
+    const double startAt = 0.5, toneFrom = 1.5;  // the tone should be in the file at about 1.0 s
+    std::string withSound = dir + "\\rec_sound.mp4", noSound = dir + "\\rec_nosound.mp4";
+    RecordResult r1, r2;
+    double started = 0;
+    if (!RecordOnce(m, withSound, startAt, toneFrom, true, &started) || !ReadBack(withSound, r1))
+        return Fail("record with sound");
+    // The recorder takes a block's arrival as its end; this "audio thread" hands blocks over at their start.
+    double expected = toneFrom - started - 480.0 / 44100.0;
+    printf("[record] with sound: %d streams, picture ends %.2f s, sound ends %.2f s, tone at %.3f s (expected %.3f)\n",
+           r1.streams, r1.videoEnd, r1.audioEnd, r1.toneAt, expected);
+    if (r1.streams != 2 || !r1.h264 || !r1.aac) return Fail("expected an H.264 and an AAC track");
+    if (std::fabs(r1.audioEnd - r1.videoEnd) > 0.3) return Fail("sound and picture end apart");
+    if (r1.toneAt < 0 || std::fabs(r1.toneAt - expected) > 0.1) return Fail("sound out of sync with the picture");
+    if (!RecordOnce(m, noSound, startAt, 0, false, &started) || !ReadBack(noSound, r2)) return Fail("record without sound");
+    printf("[record] without sound: %d stream, picture ends %.2f s\n", r2.streams, r2.videoEnd);
+    if (r2.streams != 1 || !r2.h264) return Fail("expected only an H.264 track");
+    printf("PASS record\n");
+    return 0;
+}
+
 static int CmdResolve(std::string instance, const std::string& type) {
     uint16_t port = 0;
     in_addr addr{};
@@ -1152,6 +1310,7 @@ int main(int argc, char** argv) {
     if (cmd == "stream") return CmdStream(argc, argv);
     if (cmd == "music") return CmdMusic(argc, argv);
     if (cmd == "resampler") return CmdResampler();
+    if (cmd == "record" && argc >= 4) return CmdRecord(argv[2], argv[3]);
     if (cmd == "resolve" && argc >= 4) return CmdResolve(argv[2], argv[3]);
     if (cmd == "license" && argc >= 5) return CmdLicense(argv[2], argv[3], argv[4]);  // activate|validate KEY NAME|ID
     return Fail("unknown command");

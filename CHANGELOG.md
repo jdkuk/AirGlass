@@ -29,6 +29,11 @@ All notable changes to AirGlass are documented here. The format is based on
   `config.ini`; tray → **Forget allowed and blocked devices** clears them. IT departments can turn it on for the
   whole machine with `askNewDevices=1` under `[security]` in `%ProgramData%\AirGlass\airglass.ini`.
 
+### Changed
+- Pro: recordings now have sound. The mirrored session's audio is encoded to AAC (FFmpeg's built-in encoder) as a
+  second track, kept in sync with the picture by the same clock; the picture is still copied without re-encoding.
+  Sound that starts late or pauses becomes silence; a device that sends no sound gives a picture-only MP4 as before.
+
 ## [1.0.5] - 2026-11-15
 
 ### Added

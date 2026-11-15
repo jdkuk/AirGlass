@@ -9,14 +9,16 @@
 #include "crypto/crypto.h"
 #include "media/audio_decoder.h"
 #include "media/audio_output.h"
+#include "media/frame_sink.h"
 #include "net/netutil.h"
 
 class AudioStream {
 public:
     ~AudioStream() { Stop(); }
     // music: an audio-only (non-mirroring) session - deeper buffering and more patient resends.
+    // tap: also gets the decoded PCM (the mirroring window, for recording); nullptr for music.
     bool Start(const sockaddr_storage& peer, uint16_t peerControlPort, const AudioFormat& fmt, bool music,
-               const uint8_t aesKey[16], const uint8_t aesIv[16], AudioOutput* out);
+               const uint8_t aesKey[16], const uint8_t aesIv[16], AudioOutput* out, FrameSink* tap = nullptr);
     void Stop();
     // FLUSH (pause/seek). nextSeq: first sequence number after the flush (RTP-Info), or -1.
     void Flush(int nextSeq = -1);
@@ -52,6 +54,7 @@ private:
     AudioDecoder dec_;
     AudioOutput* out_ = nullptr;
     bool acquired_ = false;
+    FrameSink* tap_ = nullptr;
     std::vector<Slot> slots_;
     bool haveNext_ = false;
     uint16_t nextSeq_ = 0, highSeq_ = 0;

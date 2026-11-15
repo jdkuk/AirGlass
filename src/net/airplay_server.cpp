@@ -703,7 +703,9 @@ void AirPlayServer::Connection::Setup(const Request& req, Response& resp) {
                 }
                 auto stream = std::make_unique<AudioStream>();
                 if (music) stream->onPlaying = [this](bool playing, double at) { OnPlaying(playing, at); };
-                if (!stream->Start(peer_, cport, af, music, aesKey_, aesIv_, srv_->audio_)) {
+                // Mirroring audio also goes to the window's recorder.
+                if (!stream->Start(peer_, cport, af, music, aesKey_, aesIv_, srv_->audio_,
+                                   music ? nullptr : srv_->video_)) {
                     LOGE("rtsp[%llu]: audio stream setup failed", (unsigned long long)id_);
                     continue;
                 }

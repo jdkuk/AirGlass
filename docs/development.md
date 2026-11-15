@@ -28,6 +28,14 @@ Start-Process build\AirGlass.exe '--loopback','--debug'
 .\build\airglass_test.exe music testmedia\music_alac.m4a --art testmedia\art.jpg --port 7010  # -> PASS music
 ```
 
+The Pro recorder has its own check, no receiver needed: it records an H.264 file fed in real time plus a tone that
+starts late, reads the MP4 back and checks the sound track, its sync with the picture (within 0.1 s) and a
+recording without sound:
+
+```powershell
+.\build\airglass_test.exe record testmedia\landscape.mp4 $env:TEMP   # -> PASS record
+```
+
 `tools\snapshots.ps1` and `tools\e2e.ps1` wrap this with timed captures. Test media can be generated with the bundled
 FFmpeg (`libopenh264` and `alac` are in the LGPL build):
 

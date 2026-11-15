@@ -14,7 +14,7 @@ bool LooksLikeAlac(const std::vector<uint8_t>& p, int channels) {
 }  // namespace
 
 bool AudioStream::Start(const sockaddr_storage& peer, uint16_t peerControlPort, const AudioFormat& fmt, bool music,
-                        const uint8_t aesKey[16], const uint8_t aesIv[16], AudioOutput* out) {
+                        const uint8_t aesKey[16], const uint8_t aesIv[16], AudioOutput* out, FrameSink* tap) {
     Stop();
     fmt_ = fmt;
     music_ = music;
@@ -53,6 +53,8 @@ bool AudioStream::Start(const sockaddr_storage& peer, uint16_t peerControlPort, 
         out_->Configure(fmt.sampleRate, music ? AudioOutput::Profile::Music : AudioOutput::Profile::Mirror);
         acquired_ = true;
     }
+    tap_ = tap;
+    if (tap_) tap_->OnAudioStarted(fmt.sampleRate);
     stop_ = false;
     thread_ = std::thread(&AudioStream::Run, this);
     LOGI("audio: %s, %d samples/frame, %s, on UDP data %u / control %u", fmt.Describe().c_str(), fmt.spf,
@@ -70,6 +72,10 @@ void AudioStream::Stop() {
     if (acquired_ && out_) {
         out_->Release();
         acquired_ = false;
+    }
+    if (tap_) {
+        tap_->OnAudioStopped();
+        tap_ = nullptr;
     }
     net::CloseSocket(data_);
     net::CloseSocket(ctrl_);
@@ -123,6 +129,7 @@ void AudioStream::DecodeAndPlay(std::vector<uint8_t>& payload) {
         fwrite(s.data(), sizeof(int16_t), s.size(), dump_);
     }
     if (frames > 0 && out_) out_->Push(pcm_.data(), size_t(frames));
+    if (frames > 0 && tap_) tap_->OnDecodedAudio(pcm_.data(), size_t(frames));
     else if (frames < 0 && music_ && out_) out_->PushSilence(size_t(fmt_.spf));  // keep timing
 }
 

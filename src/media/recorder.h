@@ -1,18 +1,23 @@
-// AirGlass Pro: records the mirrored screen to MP4.
+// AirGlass Pro: records the mirrored screen, with its sound, to MP4.
 //
 // The sender's H.264 stream is copied into the file (FFmpeg's MP4 muxer, no re-encode), so a
 // recording costs almost no CPU and keeps the original quality. A recording has to begin on a
 // keyframe, and senders send them rarely, so the recorder always keeps the packets since the last
 // keyframe: Start() writes those first, timed before zero, and an MP4 edit list starts playback at
 // the click.
-// Video only: mirroring audio is not recorded.
+// Sound: when the session has a mirroring audio stream, its decoded PCM is encoded to AAC-LC (FFmpeg's
+// built-in "aac" encoder) as a second track. Both tracks are timed by the same clock, the arrival time on
+// this PC, so they stay in sync; gaps (sound that starts late, pauses, lost packets) become silence.
 #pragma once
 
 #include "common.h"
 
 #include <deque>
 
+struct AVCodecContext;
 struct AVFormatContext;
+struct AVFrame;
+struct AVPacket;
 struct AVStream;
 
 class Recorder {
@@ -23,12 +28,18 @@ public:
     void Feed(const uint8_t* data, size_t n);
     // Size of the decoded picture, needed for the MP4 header (renderer thread).
     void SetFrameSize(int w, int h);
+    // Mirroring audio (audio threads): a stream started or stopped, and each decoded block (interleaved
+    // stereo float). A recording gets a sound track if a stream is running when it starts.
+    void AudioStarted(int sampleRate);
+    void AudioStopped();
+    void FeedAudio(const float* pcm, size_t frames);
 
     // UI thread. Start returns false if there is nothing to record yet or the file can't be created.
     bool Start(const std::wstring& path, std::string* error);
     // Finishes the file; returns its path, or empty if nothing was written.
     std::wstring Stop();
     bool Active();
+    bool HasSound();   // the recording in progress has a sound track
     double Seconds();  // length so far
 
     // Called (from the mirror thread) when a recording ends by itself, e.g. the device rotated.
@@ -41,7 +52,12 @@ private:
         bool key = false;
     };
     bool OpenLocked(std::string* error);
+    bool OpenAudioLocked();
     void WriteLocked(const Packet& p);
+    void WritePacketLocked(AVPacket* pkt);
+    void PadAudioLocked(int64_t samples);
+    void EncodeAudioLocked(bool flush);
+    void CloseAudioLocked();
     std::wstring CloseLocked();
 
     std::mutex mu_;
@@ -55,4 +71,15 @@ private:
     std::wstring path_;
     std::vector<uint8_t> fileConfig_;  // SPS/PPS the open file was started with
     int64_t t0_ = -1, lastPts_ = -1, lastUs_ = 0;
+    // Sound
+    int audioStreams_ = 0, audioRate_ = 0;  // running mirroring audio streams and their sample rate
+    AVStream* ast_ = nullptr;
+    AVCodecContext* aenc_ = nullptr;
+    AVFrame* aframe_ = nullptr;
+    int trackRate_ = 0;
+    std::vector<float> apending_;  // interleaved samples waiting for a whole encoder frame
+    int64_t aSamples_ = 0;         // samples placed on the track so far: the track is at t0_ + aSamples_ / rate
+    int64_t aEncoded_ = 0;         // samples handed to the encoder (pts of the next frame)
+    double aDrift_ = 0;            // smoothed offset of arriving sound from the track position (samples)
+    bool aWarned_ = false;
 };

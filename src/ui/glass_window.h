@@ -114,6 +114,9 @@ public:
     void PresentSwFrame(const uint8_t* const planes[3], const int strides[3], bool nv12, int width, int height,
                         const VideoColor& color) override;
     void OnEncodedVideo(const uint8_t* data, size_t n) override { recorder_.Feed(data, n); }
+    void OnAudioStarted(int sampleRate) override { recorder_.AudioStarted(sampleRate); }
+    void OnAudioStopped() override { recorder_.AudioStopped(); }
+    void OnDecodedAudio(const float* pcm, size_t frames) override { recorder_.FeedAudio(pcm, frames); }
 
     // Debug: renders the next frame and saves nothing; used by tests to force a frame.
     void Wake();

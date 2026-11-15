@@ -86,3 +86,17 @@ Run on a real PC with an iPhone (and an iPad if you have one). Each step lists w
 | 13 | As admin, create `%ProgramData%\AirGlass\airglass.ini` with `[security]` / `askNewDevices=1`, restart AirGlass. | The tray item is ticked and greyed, "(set by your organisation)". New devices are asked about, also in the free edition. Delete the file and restart: back to the user's choice. |
 | 14 | Free edition (trial over) with it off: choose "Ask before new devices connect (Pro)…". | The AirGlass Pro dialog: "Asking before new devices connect is part of AirGlass Pro…". If it was turned on during the trial, it stays on and can be turned off. |
 | 15 | Loopback test (`AirGlass.exe --loopback` + `airglass_test stream`) with it on. | No prompt; the test passes. |
+
+## Recording with sound (Pro, <kbd>R</kbd>)
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Mirror from the iPhone, play a video with sound (or a YouTube clip with speech), press <kbd>R</kbd>. | Balloon "Recording the mirrored screen and its sound to Videos\AirGlass…". The log says `record: started …, sound 44100 Hz AAC` (or 48000). |
+| 2 | Record about a minute, press <kbd>R</kbd>, play the MP4 (Films & TV, VLC, and drop it in a browser tab). | Picture and sound, lips in sync with speech from start to end. |
+| 3 | Mirror with no sound playing, start recording, then after 10 s start a video with sound; stop after another 20 s. | The first 10 s are silent, then the sound comes in at the moment it started on the phone, in sync. |
+| 4 | Pause the phone's video for 10 s mid-recording, then resume. | Silence for the pause, then sound in sync again (no drift after the gap). |
+| 5 | Record for 15 minutes with speech. | Still in sync at the end (within about a frame or two). |
+| 6 | Rotate the phone while recording. | The recording finishes by itself as before; its sound runs to the end of its picture. |
+| 7 | If you have a sender that sets up no audio stream (its session has no `audio: … mirroring` line in the log), record from it. | Balloon "…(it sends no sound)…"; the MP4 has a picture track only, as in 1.0.5. |
+| 8 | Check the file in File Explorer → Properties → Details, or `ffprobe`. | Video H.264 at the sender's size; audio AAC stereo 160 kb/s. |
+| 9 | Free edition: press <kbd>R</kbd>. | The AirGlass Pro dialog, as before. |

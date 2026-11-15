@@ -24,4 +24,9 @@ public:
                                 int height, const VideoColor& color) = 0;
     // The compressed access unit (Annex-B, SPS/PPS prepended on config changes), for recording.
     virtual void OnEncodedVideo(const uint8_t* data, size_t n) { (void)data; (void)n; }
+    // The mirroring session's sound, for recording (audio thread): a stream starts or stops, and each block of
+    // decoded PCM (interleaved stereo float) as it is decoded.
+    virtual void OnAudioStarted(int sampleRate) { (void)sampleRate; }
+    virtual void OnAudioStopped() {}
+    virtual void OnDecodedAudio(const float* pcm, size_t frames) { (void)pcm; (void)frames; }
 };

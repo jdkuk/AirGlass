@@ -69,6 +69,9 @@ jobs:
           & $ff -hide_banner -loglevel error -y -f lavfi -i testsrc2=s=1920x1080:r=30:d=6 -c:v libopenh264 -b:v 6M -pix_fmt yuv420p build/testmedia/landscape.mp4
           & $ff -hide_banner -loglevel error -y -f lavfi -i "sine=f=440:d=6" -ac 2 -ar 44100 -c:a alac build/testmedia/music_alac.m4a
 
+      - name: Recorder (picture + sound in sync, sound starting late, no sound)
+        run: ./build/airglass_test.exe record build/testmedia/landscape.mp4 "$env:RUNNER_TEMP"
+
       - name: Loopback end-to-end (mirroring + lossless music)
         # Hosted runners have no GPU; the receiver uses the basic render driver and stays hidden.
         timeout-minutes: 6

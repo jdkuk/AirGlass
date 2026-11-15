@@ -4,7 +4,7 @@ AirGlass is designed to keep everything on your PC and your local network.
 
 | Data | Where it goes |
 |---|---|
-| Screen Mirroring video and audio | Your local network only (device → PC). Never stored, never uploaded. |
+| Screen Mirroring video and audio | Your local network only (device → PC). Never uploaded, and only stored when you record (Pro), to Videos\AirGlass. |
 | AirPlay music, track info, artwork | Local network only. The current artwork is cached in `%LOCALAPPDATA%\AirGlass` and replaced by the next track. |
 | Your device's name and model | Shown in the window and written to the local log file. |
 | Allowed and blocked devices (Pro) | Their AirPlay device ids and names, in `config.ini` on this PC only. |
