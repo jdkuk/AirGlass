@@ -67,3 +67,4 @@ details p { margin: 10px 0 0; }
 
 footer { padding: 40px 0 60px; color: var(--faint); font-size: 13px; border-top: 1px solid var(--line); margin-top: 40px; }
 footer a { color: var(--muted); }
+footer .footguides { margin: 0 0 12px; line-height: 1.9; }

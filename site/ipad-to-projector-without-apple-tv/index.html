@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Show an iPad on the Classroom Projector Without an Apple TV · AirGlass</title>
+<meta name="description" content="Turn the classroom PC already wired to the projector into an AirPlay receiver for iPads, with a PIN and an allow-list so only your class can connect. No Apple TV needed.">
+<link rel="canonical" href="https://jdkuk.github.io/AirGlass/ipad-to-projector-without-apple-tv/">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080d">
+<link rel="icon" href="../icon.png">
+<meta property="og:title" content="Show an iPad on the projector without an Apple TV">
+<meta property="og:description" content="Turn the classroom PC into an AirPlay receiver for iPads, with a PIN and allow-list so only your class can connect.">
+<meta property="og:image" content="https://jdkuk.github.io/AirGlass/og.png">
+<meta property="og:url" content="https://jdkuk.github.io/AirGlass/ipad-to-projector-without-apple-tv/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="../pages.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "Do we need an Apple TV to AirPlay an iPad to the classroom projector?", "acceptedAnswer": {"@type": "Answer", "text": "No. If a Windows PC is already wired to the projector, installing AirGlass on it turns that PC into an AirPlay receiver, so the iPad shows up in Screen Mirroring the same way it would for an Apple TV."}},
+    {"@type": "Question", "name": "How do we stop other students' devices connecting?", "acceptedAnswer": {"@type": "Answer", "text": "AirGlass Pro adds two options: 'Ask before new devices connect', which asks on the PC before an unrecognised device is allowed, and 'Require a code to connect', which shows a 4-digit code on the projector that a device must type once before it can mirror."}},
+    {"@type": "Question", "name": "Can IT set this up the same way on every classroom PC?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. A setting under %ProgramData%\\AirGlass\\airglass.ini applies machine-wide: a fixed receiver name per room, and turning on the PIN code or the allow-list for everyone, without each PC being configured by hand."}},
+    {"@type": "Question", "name": "Can a teacher draw on the screen during the lesson?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, with AirGlass Pro. Pressing D brings up a pen, arrow, highlighter and eraser with an on-screen toolbar, so a teacher can annotate directly over the mirrored iPad screen."}}
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../icon.png" alt="">AirGlass</a>
+    <div class="navlinks">
+      <a class="hide-sm" href="../mirror-two-iphones-to-pc/">Two devices at once</a>
+      <a class="hide-sm" href="../compare/">Compare</a>
+      <a class="hide-sm" href="https://github.com/jdkuk/AirGlass">GitHub</a>
+      <a class="btn primary" href="https://github.com/jdkuk/AirGlass/releases/latest">Download free</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+<article class="wrap narrow">
+  <div class="kicker">Guide · Schools</div>
+  <h1>Show an iPad on the classroom projector, without an Apple TV</h1>
+  <p class="lede">Most classrooms already have a Windows PC wired to the projector. Instead of buying an Apple TV for every room, install a small receiver on that PC and the iPad mirrors to it over AirPlay the same way.</p>
+
+  <figure>
+    <img src="../media/desktop.jpg" srcset="../media/desktop.jpg 1600w, ../media/desktop@2x.jpg 3200w" sizes="(max-width: 760px) 100vw, 728px" alt="A device mirrored to a Windows desktop in a floating glass window" width="1600" height="900">
+    <figcaption>AirGlass mirroring to the PC already driving the projector.</figcaption>
+  </figure>
+
+  <h2>Why an Apple TV isn't the only option</h2>
+  <p>Apple TV is the usual way a classroom gets AirPlay, but it means another box, another remote and another thing on the AV budget for every room — on top of the PC that's probably already connected to the same projector or screen. AirGlass turns that existing PC into the AirPlay receiver instead: install it once, and iPads and iPhones see the PC in Screen Mirroring exactly as they would an Apple TV.</p>
+
+  <h2>Set up a classroom PC</h2>
+  <ol class="steps">
+    <li><strong>Install AirGlass</strong> on the PC connected to the projector. <a href="https://github.com/jdkuk/AirGlass/releases/latest">Download the installer</a> and run it; it starts with Windows and sits in the tray.</li>
+    <li><strong>Name it after the room.</strong> Right-click the tray icon → <em>Rename this PC…</em> so "Room 12" or "Science Lab" is what shows up in Screen Mirroring, not the PC's network name.</li>
+    <li><strong>Lock it down (Pro).</strong> Turn on <em>Require a code to connect</em> so a 4-digit code appears on the projector that a new iPad has to type once, or <em>Ask before new devices connect</em> to approve each one from the PC. Either stops a device outside your class from mirroring by mistake.</li>
+    <li><strong>Mirror from the iPad.</strong> Open Control Center, tap <em>Screen Mirroring</em>, and choose the room's name.</li>
+  </ol>
+
+  <h2>One setup, every room</h2>
+  <p>For more than a handful of PCs, configuring the PIN or allow-list by hand on each one doesn't scale. AirGlass reads a machine-wide setting from <code>%ProgramData%\AirGlass\airglass.ini</code> that an IT department can roll out once: a fixed receiver name, and <code>requirePin=1</code> or <code>askNewDevices=1</code> under <code>[security]</code> to turn the code or the allow-list on for the whole fleet without touching every PC by hand. Full detail is in the <a href="https://github.com/jdkuk/AirGlass/blob/main/docs/deployment.md">deployment docs</a>.</p>
+
+  <div class="cta">
+    <p>Mirroring is free. The PIN, allow-list and drawing are part of Pro, $9.99 once per PC.</p>
+    <a class="btn primary" href="https://github.com/jdkuk/AirGlass/releases/latest">Download AirGlass</a>
+  </div>
+
+  <h2>During the lesson</h2>
+  <p>With AirGlass Pro, pressing <kbd>D</kbd> brings up a pen, arrow, highlighter and eraser with an on-screen toolbar, so a teacher can annotate straight over whatever the iPad is showing — working through a diagram, circling a mistake, marking up a map — without leaving the mirrored view. <kbd>Z</kbd> drags out a region to zoom into, useful for a small detail the back row can't read.</p>
+
+  <h2>Questions</h2>
+  <details><summary>Do we need an Apple TV to AirPlay an iPad to the classroom projector?</summary><p>No. If a Windows PC is already wired to the projector, installing AirGlass on it turns that PC into an AirPlay receiver, so the iPad shows up in Screen Mirroring the same way it would for an Apple TV.</p></details>
+  <details><summary>How do we stop other students' devices connecting?</summary><p>AirGlass Pro adds two options: "Ask before new devices connect", which asks on the PC before an unrecognised device is allowed, and "Require a code to connect", which shows a 4-digit code on the projector that a device must type once before it can mirror.</p></details>
+  <details><summary>Can IT set this up the same way on every classroom PC?</summary><p>Yes. A setting under %ProgramData%\AirGlass\airglass.ini applies machine-wide: a fixed receiver name per room, and turning on the PIN code or the allow-list for everyone, without each PC being configured by hand.</p></details>
+  <details><summary>Can a teacher draw on the screen during the lesson?</summary><p>Yes, with AirGlass Pro. Pressing D brings up a pen, arrow, highlighter and eraser with an on-screen toolbar, so a teacher can annotate directly over the mirrored iPad screen.</p></details>
+
+  <p class="small">Related: <a href="../mirror-two-iphones-to-pc/">Mirror two iPads at once</a> · <a href="../airplay-to-windows/">How AirPlay to Windows works</a> · <a href="../compare/">Compare AirPlay receivers</a></p>
+</article>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footguides">Guides: <a href="../airplay-to-windows/">AirPlay to Windows</a> · <a href="../record-iphone-screen-on-pc/">Record iPhone screen</a> · <a href="../iphone-to-obs/">iPhone in OBS</a> · <a href="../mirror-two-iphones-to-pc/">Mirror two iPhones</a> · <a href="./">iPad to projector</a> · <a href="../compare/">Compare</a> · <a href="../lonelyscreen-alternative/">vs LonelyScreen</a> · <a href="../airserver-alternative/">vs AirServer</a></div>
+    © 2026 AirGlass · <a href="../">Home</a> · <a href="https://github.com/jdkuk/AirGlass">Source on GitHub</a><br>
+    AirPlay, iPad, iPhone and Mac are trademarks of Apple Inc. Apple TV is a trademark of Apple Inc. AirGlass is not affiliated with or endorsed by Apple.
+  </div>
+</footer>
+</body>
+</html>

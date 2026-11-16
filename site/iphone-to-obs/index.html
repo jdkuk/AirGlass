@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Put Your iPhone in OBS on Windows, Green-Screen Capture · AirGlass</title>
+<meta name="description" content="Show your iPhone or iPad screen in OBS on a Windows PC with a clean chroma-key capture. AirGlass Pro's OBS mode gives OBS Window Capture a plain green window to key out, free to try.">
+<link rel="canonical" href="https://jdkuk.github.io/AirGlass/iphone-to-obs/">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080d">
+<link rel="icon" href="../icon.png">
+<meta property="og:title" content="Put your iPhone in OBS on Windows (green-screen capture)">
+<meta property="og:description" content="AirGlass Pro's OBS mode gives OBS Window Capture a clean chroma-key window for your iPhone or iPad.">
+<meta property="og:image" content="https://jdkuk.github.io/AirGlass/og.png">
+<meta property="og:url" content="https://jdkuk.github.io/AirGlass/iphone-to-obs/">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="../pages.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "How to put an iPhone or iPad in OBS on Windows",
+  "description": "Mirror an iPhone or iPad to Windows with AirGlass, switch to OBS mode, and capture it cleanly in OBS Studio with Window Capture and a chroma-key filter.",
+  "totalTime": "PT2M",
+  "tool": [{"@type": "HowToTool", "name": "AirGlass Pro (AirPlay receiver with OBS mode)"}, {"@type": "HowToTool", "name": "OBS Studio"}],
+  "step": [
+    {"@type": "HowToStep", "name": "Mirror the device", "text": "Install AirGlass, then mirror the iPhone or iPad from Control Center's Screen Mirroring."},
+    {"@type": "HowToStep", "name": "Switch to OBS mode", "text": "Press O, or use the tray or window menu. The glass window is replaced by a plain rectangle on solid chroma-key green, titled 'AirGlass (OBS)'."},
+    {"@type": "HowToStep", "name": "Add a Window Capture source in OBS", "text": "In OBS Studio, add a Window Capture source and choose the window titled 'AirGlass (OBS)'."},
+    {"@type": "HowToStep", "name": "Key out the green", "text": "Add a Chroma Key filter to the source set to green (#00B140) to remove the background, or skip the filter to keep a plain rectangular picture."}
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "Can I show my iPhone screen in OBS?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Mirror the iPhone to Windows with AirGlass, switch the window to OBS mode, and add it to OBS as a Window Capture source."}},
+    {"@type": "Question", "name": "Do I need a physical green screen?", "acceptedAnswer": {"@type": "Answer", "text": "No. OBS mode replaces the glass window itself with a plain rectangle on solid chroma-key green (#00B140), so OBS's own Chroma Key filter can remove the background without any physical screen."}},
+    {"@type": "Question", "name": "Is OBS mode free?", "acceptedAnswer": {"@type": "Answer", "text": "No, OBS mode is part of AirGlass Pro, a $9.99 one-time upgrade usable on up to 3 PCs. The free edition mirrors full screen only."}},
+    {"@type": "Question", "name": "Will OBS lose the window if I switch devices?", "acceptedAnswer": {"@type": "Answer", "text": "No. The capture window keeps the title 'AirGlass (OBS)' so the same OBS source keeps finding it, and AirGlass remembers that you want OBS mode for next time."}}
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../icon.png" alt="">AirGlass</a>
+    <div class="navlinks">
+      <a class="hide-sm" href="../record-iphone-screen-on-pc/">Record to MP4</a>
+      <a class="hide-sm" href="../compare/">Compare</a>
+      <a class="hide-sm" href="https://github.com/jdkuk/AirGlass">GitHub</a>
+      <a class="btn primary" href="https://github.com/jdkuk/AirGlass/releases/latest">Download free</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+<article class="wrap narrow">
+  <div class="kicker">Guide</div>
+  <h1>Put your iPhone in OBS on Windows (green-screen capture)</h1>
+  <p class="lede">Streaming or recording a phone screen in OBS usually means fighting window borders, shadows and rounded corners. AirGlass Pro's OBS mode swaps all of that for a plain rectangle on solid chroma-key green, built for OBS's Window Capture.</p>
+
+  <figure>
+    <img src="../media/real-iphone-game.jpg" alt="A real iPhone mirrored to Windows with AirGlass" width="1600" height="1200">
+    <figcaption>A real iPhone mirrored to Windows with AirGlass. OBS mode swaps the glass window for a plain chroma-key rectangle.</figcaption>
+  </figure>
+
+  <h2>Why mirroring windows don't key out cleanly</h2>
+  <p>AirGlass's normal glass window has a refractive rim, a shadow and rounded corners that pick up whatever's behind them, so a straight Window Capture in OBS brings all of that along. OBS mode removes it: the window becomes a flat rectangle filled with solid green (#00B140) around the mirrored picture, with no glass, shadow or on-screen controls, so a Chroma Key filter has a clean background to remove.</p>
+
+  <h2>Set it up</h2>
+  <ol class="steps">
+    <li><strong>Mirror your iPhone or iPad.</strong> Install AirGlass, open Control Center's <em>Screen Mirroring</em> on the device, and pick your PC.</li>
+    <li><strong>Switch to OBS mode.</strong> Press <kbd>O</kbd>, or use the tray icon or the window's right-click menu. The window is now titled <em>AirGlass (OBS)</em> and filled with solid green around the picture. AirGlass remembers the choice for next time.</li>
+    <li><strong>Add a Window Capture source in OBS.</strong> In OBS Studio, click <strong>+</strong> under Sources, choose <em>Window Capture</em>, and pick the window titled <em>AirGlass (OBS)</em>.</li>
+    <li><strong>Key out the green.</strong> Right-click the source, open <em>Filters</em>, add a <em>Chroma Key</em> filter, and set the colour to green (#00B140 is the exact shade AirGlass uses). Adjust similarity until the edges look clean.</li>
+  </ol>
+  <p>Don't want to key it out? Skip the Chroma Key filter and crop the Window Capture to the picture instead — you'll get a plain rectangular phone screen with a thin green border.</p>
+
+  <div class="cta">
+    <p>OBS mode is part of AirGlass Pro, $9.99 once.</p>
+    <a class="btn primary" href="https://github.com/jdkuk/AirGlass/releases/latest">Download AirGlass</a>
+  </div>
+
+  <h2>While you're live</h2>
+  <p>Everything else about the mirror keeps working in OBS mode: lossless AirPlay music still plays through the PC, and if the sender offers AirPlay remote control, <kbd>Space</kbd> and <kbd>Ctrl</kbd>+arrow keys play, pause and skip tracks without touching the phone. Drawing and region zoom are for the normal glass window; OBS mode is built to stay a plain, stable rectangle for the capture.</p>
+
+  <h2>Questions</h2>
+  <details><summary>Can I show my iPhone screen in OBS?</summary><p>Yes. Mirror the iPhone to Windows with AirGlass, switch the window to OBS mode, and add it to OBS as a Window Capture source.</p></details>
+  <details><summary>Do I need a physical green screen?</summary><p>No. OBS mode replaces the glass window itself with a plain rectangle on solid chroma-key green (#00B140), so OBS's own Chroma Key filter can remove the background without any physical screen.</p></details>
+  <details><summary>Is OBS mode free?</summary><p>No, OBS mode is part of AirGlass Pro, a $9.99 one-time upgrade usable on up to 3 PCs. The free edition mirrors full screen only.</p></details>
+  <details><summary>Will OBS lose the window if I switch devices?</summary><p>No. The capture window keeps the title "AirGlass (OBS)" so the same OBS source keeps finding it, and AirGlass remembers that you want OBS mode for next time.</p></details>
+
+  <p class="small">Related: <a href="../record-iphone-screen-on-pc/">Record your iPhone screen to MP4</a> · <a href="../mirror-two-iphones-to-pc/">Mirror two iPhones at once</a> · <a href="../compare/">Compare AirPlay receivers</a></p>
+</article>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footguides">Guides: <a href="../airplay-to-windows/">AirPlay to Windows</a> · <a href="../record-iphone-screen-on-pc/">Record iPhone screen</a> · <a href="./">iPhone in OBS</a> · <a href="../mirror-two-iphones-to-pc/">Mirror two iPhones</a> · <a href="../ipad-to-projector-without-apple-tv/">iPad to projector</a> · <a href="../compare/">Compare</a> · <a href="../lonelyscreen-alternative/">vs LonelyScreen</a> · <a href="../airserver-alternative/">vs AirServer</a></div>
+    © 2026 AirGlass · <a href="../">Home</a> · <a href="https://github.com/jdkuk/AirGlass">Source on GitHub</a><br>
+    AirPlay, iPhone, iPad and Mac are trademarks of Apple Inc. OBS Studio is a trademark of its respective owner. AirGlass is not affiliated with or endorsed by Apple or OBS Studio.
+  </div>
+</footer>
+</body>
+</html>
