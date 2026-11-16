@@ -5,9 +5,15 @@ All notable changes to AirGlass are documented here. The format is based on
 
 ## [Unreleased]
 
-## [1.0.6] - 2026-11-15
+## [1.0.6] - 2026-11-16
 
 ### Added
+- Pro: screenshots. Press <kbd>S</kbd> (or use the tray menu) to save a PNG of the glass window, with its real
+  transparency, to Pictures\AirGlass and put the mirrored picture on the clipboard.
+- Pro: recording. Press <kbd>R</kbd> to record the mirrored screen to an MP4 in Videos\AirGlass. The sender's H.264
+  stream is copied without re-encoding, so it keeps full quality and uses almost no CPU; a recording finishes by
+  itself if the device rotates.
+- Tray menu: Save screenshot, Start/Stop recording (with the running time) and Open screenshots folder.
 - Rename this PC: right-click the tray icon → **Rename this PC…** to name the receiver after the room. Devices see
   the new name straight away, without restarting AirGlass.
 - A machine-wide receiver name for IT departments: `name=` under `[receiver]` in
@@ -65,13 +71,14 @@ All notable changes to AirGlass are documented here. The format is based on
   both windows.
 
 ### Changed
+- The tray menu's "Unlock windowed mode" is now "Buy AirGlass Pro".
 - Pro: recordings now have sound. The mirrored session's audio is encoded to AAC (FFmpeg's built-in encoder) as a
   second track, kept in sync with the picture by the same clock; the picture is still copied without re-encoding.
   Sound that starts late or pauses becomes silence. Every recording gets the sound track, even one started before
   any sound plays: it is silent (44.1 kHz stereo, as iOS mirroring sends) until the sound starts, then the sound
   joins in sync. Sound at another rate starting later leaves the rest of the recording silent (logged).
 - The AirGlass Pro dialog now lists what Pro includes: the floating glass window, screenshots, recording with sound,
-  drawing, region zoom, OBS mode and the allow-list. The trial's welcome balloon names the new shortcuts.
+  drawing, region zoom, OBS mode and the allow-list.
 
 ### Fixed
 - A mirroring window now gets the keyboard focus when it opens, so its keys (S, R, D, Z, O…) work without a click.
@@ -85,21 +92,6 @@ All notable changes to AirGlass are documented here. The format is based on
   either. The log's "finished" line and the tray's timer count the time since the click.
 - A mirroring session now keeps the display awake, and wakes a display that had idled off when it starts
   (`[display] keepawake` / `wake` turn this off). With two devices, the display stays awake until both have stopped.
-
-## [1.0.5] - 2026-11-15
-
-### Added
-- Free 7-day AirGlass Pro trial, starting with the first mirroring session. The tray menu shows the days left, and
-  when the trial ends AirGlass offers Pro once and returns to full-screen mirroring.
-- Pro: screenshots. Press <kbd>S</kbd> (or use the tray menu) to save a PNG of the glass window, with its real
-  transparency, to Pictures\AirGlass and put the mirrored picture on the clipboard.
-- Pro: recording. Press <kbd>R</kbd> to record the mirrored screen to an MP4 in Videos\AirGlass. The sender's H.264
-  stream is copied without re-encoding, so it keeps full quality and uses almost no CPU. Picture only, no sound; a
-  recording finishes by itself if the device rotates.
-- Tray menu: Save screenshot, Start/Stop recording (with the running time) and Open screenshots folder.
-
-### Changed
-- The tray menu's "Unlock windowed mode" is now "Buy AirGlass Pro".
 
 ## [1.0.3] - 2026-10-20
 

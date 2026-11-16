@@ -106,8 +106,7 @@ engine, no account, no analytics. Everything stays on your local network.
 | Two devices at once, each in its own window (a new device takes over in the free edition; a third one takes over the oldest in Pro) | one at a time | ✅ two |
 | Use on up to 3 PCs | | ✅ |
 
-**Every install starts with a free 7-day Pro trial** from your first mirroring session, so you can try the window,
-screenshots and recording. After it, full-screen mirroring stays free. To unlock Pro, right-click the tray icon →
+Try it free to check it works with your devices. To unlock Pro, right-click the tray icon →
 **Buy AirGlass Pro**, buy, and paste the license key from your receipt email. The key is
 checked once online, and after that Pro also works offline. [How licensing works →](docs/licensing.md)
 
